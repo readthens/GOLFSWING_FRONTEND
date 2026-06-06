@@ -42,7 +42,11 @@ class AppScaffold extends StatelessWidget {
 }
 
 class PrimaryButton extends StatelessWidget {
-  const PrimaryButton({required this.label, required this.onPressed, super.key});
+  const PrimaryButton({
+    required this.label,
+    required this.onPressed,
+    super.key,
+  });
 
   final String label;
   final VoidCallback? onPressed;
@@ -61,7 +65,7 @@ class PrimaryButton extends StatelessWidget {
           disabledForegroundColor: AppColors.textMuted,
           textStyle: AppTextStyles.label.copyWith(color: Colors.black),
         ),
-        child: Text(label),
+        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     );
   }
@@ -85,7 +89,7 @@ class GhostButton extends StatelessWidget {
           side: const BorderSide(color: AppColors.border),
           textStyle: AppTextStyles.label,
         ),
-        child: Text(label),
+        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     );
   }
@@ -139,7 +143,8 @@ class InfoPanel extends StatelessWidget {
           children: [
             for (var index = 0; index < children.length; index++) ...[
               children[index],
-              if (index < children.length - 1) const Divider(color: AppColors.border, height: 22),
+              if (index < children.length - 1)
+                const Divider(color: AppColors.border, height: 22),
             ],
           ],
         ),
@@ -186,7 +191,10 @@ class ErrorText extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(message, style: AppTextStyles.body.copyWith(color: AppColors.textPrimary)),
+      child: Text(
+        message,
+        style: AppTextStyles.body.copyWith(color: AppColors.textPrimary),
+      ),
     );
   }
 }
@@ -254,4 +262,3 @@ class PanelButton extends StatelessWidget {
     );
   }
 }
-

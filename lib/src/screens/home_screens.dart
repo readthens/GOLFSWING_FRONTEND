@@ -23,7 +23,9 @@ class HomeScreen extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  const Expanded(child: Text('SWINGLENS AI', style: AppTextStyles.micro)),
+                  const Expanded(
+                    child: Text('SWINGLENS AI', style: AppTextStyles.micro),
+                  ),
                   IconButton(
                     tooltip: 'Sign out',
                     icon: const Icon(Icons.logout),
@@ -37,21 +39,35 @@ class HomeScreen extends ConsumerWidget {
               const Text('CAPTURE A CLEAN SWING', style: AppTextStyles.title),
               const SizedBox(height: 12),
               Text(
-                'Start with a face-on or down-the-line video. AI analysis arrives after the upload foundation is stable.',
-                style: AppTextStyles.body.copyWith(color: AppColors.textSecondary),
+                'Record with the guide or import a saved face-on or down-the-line video. AI analysis stays deferred.',
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
               const SizedBox(height: 24),
               InfoPanel(
                 children: [
-                  Text('PROFILE: ${auth.state.profile?.skillLevel?.toUpperCase() ?? 'SET'}'),
-                  Text('HANDEDNESS: ${auth.state.profile?.handedness?.toUpperCase() ?? 'SET'}'),
-                  Text('VIDEO CONSENT: ${auth.state.hasVideoConsent ? 'ACCEPTED' : 'REQUIRED'}'),
+                  Text(
+                    'PROFILE: ${auth.state.profile?.skillLevel?.toUpperCase() ?? 'SET'}',
+                  ),
+                  Text(
+                    'HANDEDNESS: ${auth.state.profile?.handedness?.toUpperCase() ?? 'SET'}',
+                  ),
+                  Text(
+                    'VIDEO CONSENT: ${auth.state.hasVideoConsent ? 'ACCEPTED' : 'REQUIRED'}',
+                  ),
                 ],
               ),
               const Spacer(),
-              PrimaryButton(label: 'UPLOAD SWING', onPressed: () => context.go('/capture/review')),
+              PrimaryButton(
+                label: 'CAPTURE SWING',
+                onPressed: () => context.go('/capture/review'),
+              ),
               const SizedBox(height: 12),
-              GhostButton(label: 'SWING LIBRARY', onPressed: () => context.go('/swings')),
+              GhostButton(
+                label: 'SWING LIBRARY',
+                onPressed: () => context.go('/swings'),
+              ),
             ],
           ),
         ),
@@ -85,30 +101,43 @@ class SwingLibraryScreen extends ConsumerWidget {
                 child: token == null
                     ? const Center(child: Text('Sign in required.'))
                     : FutureBuilder<List<SwingSession>>(
-                        future: ref.read(apiClientProvider).getSwingSessions(token),
+                        future: ref
+                            .read(apiClientProvider)
+                            .getSwingSessions(token),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
                           }
                           if (snapshot.hasError) {
-                            return ErrorText('Unable to load swings. Start the backend and try again.');
+                            return ErrorText(
+                              'Unable to load swings. Start the backend and try again.',
+                            );
                           }
                           final sessions = snapshot.data ?? const [];
                           if (sessions.isEmpty) {
                             return const EmptyState(
                               title: 'NO SWINGS YET',
-                              body: 'Upload your first face-on or down-the-line swing.',
+                              body:
+                                  'Upload your first face-on or down-the-line swing.',
                             );
                           }
                           return ListView.separated(
                             itemCount: sessions.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 12),
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final session = sessions[index];
                               return PanelButton(
-                                title: session.club?.toUpperCase() ?? 'SWING SESSION',
-                                subtitle: '${session.status.toUpperCase()} · ${session.videos.length} VIDEO',
-                                onPressed: () => context.go('/swings/${session.id}'),
+                                title:
+                                    session.club?.toUpperCase() ??
+                                    'SWING SESSION',
+                                subtitle:
+                                    '${session.status.toUpperCase()} · ${session.videos.length} VIDEO · ${_qualityLabel(session)}',
+                                onPressed: () =>
+                                    context.go('/swings/${session.id}'),
                               );
                             },
                           );
@@ -149,43 +178,83 @@ class SwingDetailScreen extends ConsumerWidget {
                 child: token == null
                     ? const Center(child: Text('Sign in required.'))
                     : FutureBuilder<SwingSession>(
-                        future: ref.read(apiClientProvider).getSwingSession(token, sessionId),
+                        future: ref
+                            .read(apiClientProvider)
+                            .getSwingSession(token, sessionId),
                         builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
                           }
                           if (snapshot.hasError || !snapshot.hasData) {
-                            return const ErrorText('Unable to load swing detail.');
+                            return const ErrorText(
+                              'Unable to load swing detail.',
+                            );
                           }
                           final session = snapshot.data!;
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              InfoPanel(
-                                children: [
-                                  Text('CLUB: ${session.club?.toUpperCase() ?? 'UNKNOWN'}'),
-                                  Text('STATUS: ${session.status.toUpperCase()}'),
-                                  Text('LOCATION: ${session.locationType?.toUpperCase() ?? 'UNSET'}'),
-                                ],
-                              ),
-                              const SizedBox(height: 18),
-                              const Text('VIDEOS', style: AppTextStyles.label),
-                              const SizedBox(height: 10),
-                              for (final video in session.videos)
+                          return SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 InfoPanel(
                                   children: [
-                                    Text('ANGLE: ${video.angle.toUpperCase()}'),
-                                    Text('OBJECT KEY: ${video.storageKey}'),
+                                    Text(
+                                      'CLUB: ${session.club?.toUpperCase() ?? 'UNKNOWN'}',
+                                    ),
+                                    Text(
+                                      'STATUS: ${session.status.toUpperCase()}',
+                                    ),
+                                    Text(
+                                      'LOCATION: ${session.locationType?.toUpperCase() ?? 'UNSET'}',
+                                    ),
                                   ],
                                 ),
-                              const Spacer(),
-                              const InfoPanel(
-                                children: [
-                                  Text('AI report is not enabled in Phase 1.'),
-                                  Text('Next phase adds capture quality and analysis jobs.'),
+                                const SizedBox(height: 18),
+                                const Text(
+                                  'VIDEOS',
+                                  style: AppTextStyles.label,
+                                ),
+                                const SizedBox(height: 10),
+                                for (final video in session.videos) ...[
+                                  InfoPanel(
+                                    children: [
+                                      Text(
+                                        'ANGLE: ${video.angle.toUpperCase()}',
+                                      ),
+                                      Text(
+                                        'QUALITY: ${video.qualityStatus?.toUpperCase() ?? 'PENDING'}',
+                                      ),
+                                      Text(
+                                        'SCORE: ${video.qualityScore == null ? 'UNSET' : video.qualityScore!.toStringAsFixed(0)}',
+                                      ),
+                                      if (video.durationMs != null)
+                                        Text(
+                                          'DURATION: ${(video.durationMs! / 1000).toStringAsFixed(1)} SEC',
+                                        ),
+                                      for (final check
+                                          in video.qualityChecks.take(5))
+                                        Text(
+                                          '${check.severity.toUpperCase()}: ${check.message}',
+                                        ),
+                                      Text('OBJECT KEY: ${video.storageKey}'),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
                                 ],
-                              ),
-                            ],
+                                const InfoPanel(
+                                  children: [
+                                    Text(
+                                      'AI report is not enabled in Phase 2.',
+                                    ),
+                                    Text(
+                                      'Capture quality is advisory until server media probing arrives.',
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           );
                         },
                       ),
@@ -198,3 +267,8 @@ class SwingDetailScreen extends ConsumerWidget {
   }
 }
 
+String _qualityLabel(SwingSession session) {
+  if (session.videos.isEmpty) return 'NO QUALITY';
+  final status = session.videos.first.qualityStatus;
+  return status == null ? 'QUALITY PENDING' : 'QUALITY ${status.toUpperCase()}';
+}

@@ -15,19 +15,36 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 
 class ApiClient {
   ApiClient({required String baseUrl})
-    : _dio = Dio(BaseOptions(baseUrl: baseUrl, connectTimeout: const Duration(seconds: 10))),
+    : _dio = Dio(
+        BaseOptions(
+          baseUrl: baseUrl,
+          connectTimeout: const Duration(seconds: 10),
+        ),
+      ),
       _rawDio = Dio();
 
   final Dio _dio;
   final Dio _rawDio;
 
-  Future<AuthPayload> register({required String email, required String password}) async {
-    final response = await _dio.post('/v1/auth/register', data: {'email': email, 'password': password});
+  Future<AuthPayload> register({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _dio.post(
+      '/v1/auth/register',
+      data: {'email': email, 'password': password},
+    );
     return AuthPayload.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<AuthPayload> login({required String email, required String password}) async {
-    final response = await _dio.post('/v1/auth/login', data: {'email': email, 'password': password});
+  Future<AuthPayload> login({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _dio.post(
+      '/v1/auth/login',
+      data: {'email': email, 'password': password},
+    );
     return AuthPayload.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -40,15 +57,27 @@ class ApiClient {
     return MePayload.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<MePayload> updateProfile(String accessToken, Map<String, dynamic> payload) async {
-    final response = await _dio.patch('/v1/me', data: payload, options: _auth(accessToken));
+  Future<MePayload> updateProfile(
+    String accessToken,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _dio.patch(
+      '/v1/me',
+      data: payload,
+      options: _auth(accessToken),
+    );
     return MePayload.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<List<Consent>> getConsents(String accessToken) async {
-    final response = await _dio.get('/v1/consents', options: _auth(accessToken));
+    final response = await _dio.get(
+      '/v1/consents',
+      options: _auth(accessToken),
+    );
     final items = response.data as List<dynamic>;
-    return items.map((item) => Consent.fromJson(item as Map<String, dynamic>)).toList();
+    return items
+        .map((item) => Consent.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Consent> acceptVideoConsent(String accessToken) async {
@@ -61,13 +90,24 @@ class ApiClient {
   }
 
   Future<List<SwingSession>> getSwingSessions(String accessToken) async {
-    final response = await _dio.get('/v1/swing-sessions', options: _auth(accessToken));
+    final response = await _dio.get(
+      '/v1/swing-sessions',
+      options: _auth(accessToken),
+    );
     final items = response.data as List<dynamic>;
-    return items.map((item) => SwingSession.fromJson(item as Map<String, dynamic>)).toList();
+    return items
+        .map((item) => SwingSession.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
-  Future<SwingSession> getSwingSession(String accessToken, String sessionId) async {
-    final response = await _dio.get('/v1/swing-sessions/$sessionId', options: _auth(accessToken));
+  Future<SwingSession> getSwingSession(
+    String accessToken,
+    String sessionId,
+  ) async {
+    final response = await _dio.get(
+      '/v1/swing-sessions/$sessionId',
+      options: _auth(accessToken),
+    );
     return SwingSession.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -76,15 +116,26 @@ class ApiClient {
     required XFile file,
     required String club,
     required String angle,
+    required String locationType,
+    required UploadCaptureMetadata captureMetadata,
+    int? durationMs,
+    int? resolutionWidth,
+    int? resolutionHeight,
   }) async {
     final contentType = _videoContentType(file.name);
     final byteSize = await file.length();
     final presign = await _dio.post(
       '/v1/uploads/presign',
-      data: {'filename': file.name, 'content_type': contentType, 'byte_size': byteSize},
+      data: {
+        'filename': file.name,
+        'content_type': contentType,
+        'byte_size': byteSize,
+      },
       options: _auth(accessToken),
     );
-    final presignPayload = UploadPresignPayload.fromJson(presign.data as Map<String, dynamic>);
+    final presignPayload = UploadPresignPayload.fromJson(
+      presign.data as Map<String, dynamic>,
+    );
 
     await _rawDio.put(
       presignPayload.presignedUrl,
@@ -103,17 +154,31 @@ class ApiClient {
 
     final session = await _dio.post(
       '/v1/swing-sessions',
-      data: {'club': club, 'session_type': 'analysis', 'location_type': 'range'},
+      data: {
+        'club': club,
+        'session_type': 'analysis',
+        'location_type': locationType,
+      },
       options: _auth(accessToken),
     );
-    final sessionPayload = SwingSession.fromJson(session.data as Map<String, dynamic>);
+    final sessionPayload = SwingSession.fromJson(
+      session.data as Map<String, dynamic>,
+    );
 
     await _dio.post(
       '/v1/swing-sessions/${sessionPayload.id}/videos',
       data: {
         'upload_id': presignPayload.upload.id,
         'angle': angle,
-        'metadata': {'source': 'mobile_upload_phase_1'},
+        'duration_ms': durationMs,
+        'resolution_width': resolutionWidth,
+        'resolution_height': resolutionHeight,
+        'capture_metadata': captureMetadata.toJson(),
+        'metadata': {
+          'source': 'mobile_upload_phase_2',
+          'client_file_name': file.name,
+          'client_byte_size': byteSize,
+        },
       },
       options: _auth(accessToken),
     );
@@ -121,7 +186,8 @@ class ApiClient {
     return getSwingSession(accessToken, sessionPayload.id);
   }
 
-  Options _auth(String token) => Options(headers: {'Authorization': 'Bearer $token'});
+  Options _auth(String token) =>
+      Options(headers: {'Authorization': 'Bearer $token'});
 
   String _videoContentType(String filename) {
     final lower = filename.toLowerCase();
@@ -132,3 +198,33 @@ class ApiClient {
   }
 }
 
+class UploadCaptureMetadata {
+  const UploadCaptureMetadata({
+    required this.source,
+    required this.guideOverlay,
+    this.platform,
+    this.cameraLensDirection,
+    this.nativeHighFpsAvailable,
+    this.fileExtension,
+  });
+
+  final String source;
+  final bool guideOverlay;
+  final String? platform;
+  final String? cameraLensDirection;
+  final bool? nativeHighFpsAvailable;
+  final String? fileExtension;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'source': source,
+      'guide_overlay': guideOverlay,
+      if (platform != null) 'platform': platform,
+      if (cameraLensDirection != null)
+        'camera_lens_direction': cameraLensDirection,
+      if (nativeHighFpsAvailable != null)
+        'native_high_fps_available': nativeHighFpsAvailable,
+      if (fileExtension != null) 'file_extension': fileExtension,
+    };
+  }
+}

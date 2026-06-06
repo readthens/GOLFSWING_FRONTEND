@@ -2,7 +2,10 @@ class UserProfile {
   const UserProfile({required this.id, required this.email});
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
-    return UserProfile(id: json['id'] as String, email: json['email'] as String);
+    return UserProfile(
+      id: json['id'] as String,
+      email: json['email'] as String,
+    );
   }
 
   final String id;
@@ -23,7 +26,9 @@ class GolferProfile {
       userId: json['user_id'] as String,
       handedness: json['handedness'] as String?,
       skillLevel: json['skill_level'] as String?,
-      goals: (json['goals'] as List<dynamic>? ?? const []).map((goal) => goal as String).toList(),
+      goals: (json['goals'] as List<dynamic>? ?? const [])
+          .map((goal) => goal as String)
+          .toList(),
       commonMiss: json['common_miss'] as String?,
     );
   }
@@ -62,7 +67,9 @@ class MePayload {
     final profile = json['profile'];
     return MePayload(
       user: UserProfile.fromJson(json['user'] as Map<String, dynamic>),
-      profile: profile == null ? null : GolferProfile.fromJson(profile as Map<String, dynamic>),
+      profile: profile == null
+          ? null
+          : GolferProfile.fromJson(profile as Map<String, dynamic>),
     );
   }
 
@@ -84,7 +91,10 @@ class UploadRecord {
   const UploadRecord({required this.id, required this.storageKey});
 
   factory UploadRecord.fromJson(Map<String, dynamic> json) {
-    return UploadRecord(id: json['id'] as String, storageKey: json['storage_key'] as String);
+    return UploadRecord(
+      id: json['id'] as String,
+      storageKey: json['storage_key'] as String,
+    );
   }
 
   final String id;
@@ -92,7 +102,10 @@ class UploadRecord {
 }
 
 class UploadPresignPayload {
-  const UploadPresignPayload({required this.upload, required this.presignedUrl});
+  const UploadPresignPayload({
+    required this.upload,
+    required this.presignedUrl,
+  });
 
   factory UploadPresignPayload.fromJson(Map<String, dynamic> json) {
     return UploadPresignPayload(
@@ -106,19 +119,60 @@ class UploadPresignPayload {
 }
 
 class SwingVideo {
-  const SwingVideo({required this.id, required this.angle, required this.storageKey});
+  const SwingVideo({
+    required this.id,
+    required this.angle,
+    required this.storageKey,
+    this.durationMs,
+    this.qualityScore,
+    this.qualityStatus,
+    this.qualityChecks = const [],
+  });
 
   factory SwingVideo.fromJson(Map<String, dynamic> json) {
     return SwingVideo(
       id: json['id'] as String,
       angle: json['angle'] as String,
       storageKey: json['storage_key'] as String,
+      durationMs: json['duration_ms'] as int?,
+      qualityScore: (json['quality_score'] as num?)?.toDouble(),
+      qualityStatus: json['quality_status'] as String?,
+      qualityChecks: (json['quality_checks'] as List<dynamic>? ?? const [])
+          .map(
+            (check) =>
+                SwingQualityCheck.fromJson(check as Map<String, dynamic>),
+          )
+          .toList(),
     );
   }
 
   final String id;
   final String angle;
   final String storageKey;
+  final int? durationMs;
+  final double? qualityScore;
+  final String? qualityStatus;
+  final List<SwingQualityCheck> qualityChecks;
+}
+
+class SwingQualityCheck {
+  const SwingQualityCheck({
+    required this.id,
+    required this.severity,
+    required this.message,
+  });
+
+  factory SwingQualityCheck.fromJson(Map<String, dynamic> json) {
+    return SwingQualityCheck(
+      id: json['id'] as String? ?? 'quality_check',
+      severity: json['severity'] as String? ?? 'warn',
+      message: json['message'] as String? ?? 'Quality check recorded.',
+    );
+  }
+
+  final String id;
+  final String severity;
+  final String message;
 }
 
 class SwingSession {
@@ -151,4 +205,3 @@ class SwingSession {
   final DateTime createdAt;
   final List<SwingVideo> videos;
 }
-

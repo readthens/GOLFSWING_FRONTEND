@@ -18,6 +18,10 @@
 	<string>SwingLens AI</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>SwingLens AI lets you choose swing videos for private upload and analysis.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>SwingLens AI uses the camera to record guided golf swing videos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SwingLens AI records audio with swing videos when the camera is used.</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

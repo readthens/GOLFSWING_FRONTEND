@@ -1,5 +1,15 @@
 # Frontend Repo Summary
 
+## 2026-06-06 Phase 2 Guided Capture Quality
+
+- Replaced the Phase 1 gallery-only upload screen with a guided capture/review flow using `camera`, retained gallery import through `image_picker`, and kept `video_player` for local preview metadata.
+- Added face-on/down-the-line capture overlays, source actions, club/location choices, advisory quality checks, disabled trim placeholders, and hard-failure upload blocking.
+- Added Phase 2 upload metadata for location, duration, resolution, capture source, guide overlay, platform, camera lens, native high-FPS capability, and file extension.
+- Added iOS camera/microphone privacy strings, Android camera/audio/network permissions, and native platform-channel capability stubs with high-FPS disabled.
+- Updated swing library/detail quality display and added widget tests for consent gate, capture controls, quality rendering, and metadata serialization.
+- Added an iOS simulator integration smoke test for the Phase 2 consent gate, capture controls, simulator camera fallback, and quality detail rendering.
+- Validated with `flutter analyze`, `flutter test`, `flutter test integration_test/phase2_capture_smoke_test.dart -d <iPhone 17 Pro simulator>`, and `flutter build ios --simulator --debug`; Android debug APK validation was attempted but Gradle hung and was stopped after an extended wait.
+
 ## 2026-06-06 Auth Error Detail Fix
 
 - Updated auth error handling to surface backend/Dio response details such as duplicate email, invalid credentials, validation failures, and backend connectivity.

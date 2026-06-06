@@ -6,6 +6,9 @@ import 'package:dio/dio.dart';
 import 'package:swinglens_ai/src/api/api_client.dart';
 import 'package:swinglens_ai/src/app.dart';
 import 'package:swinglens_ai/src/auth/auth_controller.dart';
+import 'package:swinglens_ai/src/screens/home_screens.dart';
+import 'package:swinglens_ai/src/screens/upload_screens.dart';
+import 'package:swinglens_ai/src/theme/app_theme.dart';
 import 'package:swinglens_ai/src/models.dart';
 
 class OnboardingTestAuthController extends AuthController {
@@ -69,6 +72,72 @@ class FailingRegisterApiClient extends ApiClient {
   }
 }
 
+class ReadyTestAuthController extends AuthController {
+  ReadyTestAuthController()
+    : super(ApiClient(baseUrl: 'http://localhost:8000')) {
+    state = const AuthState(
+      user: UserProfile(id: 'local-test-user', email: 'local-test@example.com'),
+      profile: GolferProfile(
+        userId: 'local-test-user',
+        handedness: 'right',
+        skillLevel: 'intermediate',
+        goals: ['clean_contact'],
+      ),
+      accessToken: 'local-access-token',
+      refreshToken: 'local-refresh-token',
+      hasVideoConsent: true,
+    );
+  }
+}
+
+class NoConsentTestAuthController extends AuthController {
+  NoConsentTestAuthController()
+    : super(ApiClient(baseUrl: 'http://localhost:8000')) {
+    state = const AuthState(
+      user: UserProfile(id: 'local-test-user', email: 'local-test@example.com'),
+      accessToken: 'local-access-token',
+      refreshToken: 'local-refresh-token',
+    );
+  }
+}
+
+class SwingDetailApiClient extends ApiClient {
+  SwingDetailApiClient() : super(baseUrl: 'http://localhost:8000');
+
+  @override
+  Future<SwingSession> getSwingSession(
+    String accessToken,
+    String sessionId,
+  ) async {
+    return SwingSession.fromJson({
+      'id': sessionId,
+      'status': 'video_uploaded',
+      'club': '7 iron',
+      'location_type': 'range',
+      'created_at': '2026-06-06T00:00:00Z',
+      'videos': [
+        {
+          'id': 'video-1',
+          'upload_id': 'upload-1',
+          'storage_key': 'users/local/uploads/upload-1/swing.mp4',
+          'angle': 'down_the_line',
+          'duration_ms': 4200,
+          'quality_score': 80,
+          'quality_status': 'warn',
+          'quality_checks': [
+            {
+              'id': 'guide_overlay',
+              'severity': 'warn',
+              'message':
+                  'Gallery videos may not use the SwingLens capture guide.',
+            },
+          ],
+        },
+      ],
+    });
+  }
+}
+
 void main() {
   Future<void> pumpSwingLensApp(
     WidgetTester tester, {
@@ -81,6 +150,24 @@ void main() {
       ProviderScope(
         overrides: [authControllerProvider.overrideWith((ref) => controller)],
         child: const SwingLensApp(),
+      ),
+    );
+    await tester.pump();
+  }
+
+  Future<void> pumpStandalone(
+    WidgetTester tester, {
+    required Widget child,
+    required AuthController auth,
+    ApiClient? apiClient,
+  }) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          authControllerProvider.overrideWith((ref) => auth),
+          if (apiClient != null) apiClientProvider.overrideWithValue(apiClient),
+        ],
+        child: MaterialApp(theme: buildSwingLensTheme(), home: child),
       ),
     );
     await tester.pump();
@@ -195,5 +282,89 @@ void main() {
       auth.state.error,
       'Enter a valid email and a password with at least 8 characters.',
     );
+  });
+
+  testWidgets('guided capture requires video consent', (
+    WidgetTester tester,
+  ) async {
+    await pumpStandalone(
+      tester,
+      child: const UploadScreen(),
+      auth: NoConsentTestAuthController(),
+    );
+
+    expect(find.text('GUIDED CAPTURE'), findsOneWidget);
+    expect(
+      find.text('Video-processing consent is required before upload.'),
+      findsOneWidget,
+    );
+    expect(find.text('REVIEW CONSENT'), findsOneWidget);
+    expect(find.text('RECORD VIDEO'), findsNothing);
+  });
+
+  testWidgets(
+    'guided capture exposes phase 2 controls and disables upload without media',
+    (WidgetTester tester) async {
+      await pumpStandalone(
+        tester,
+        child: const UploadScreen(),
+        auth: ReadyTestAuthController(),
+      );
+
+      expect(find.text('RECORD VIDEO'), findsOneWidget);
+      expect(find.text('CHOOSE VIDEO'), findsOneWidget);
+      expect(find.text('FACE ON'), findsOneWidget);
+      expect(find.text('DOWN THE LINE'), findsOneWidget);
+      expect(find.text('REAR TRACER'), findsNothing);
+      expect(find.text('DRIVER'), findsOneWidget);
+      expect(find.text('RANGE'), findsOneWidget);
+
+      final upload = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'UPLOAD SWING'),
+      );
+      expect(upload.onPressed, isNull);
+    },
+  );
+
+  testWidgets('swing detail renders backend quality results', (
+    WidgetTester tester,
+  ) async {
+    await pumpStandalone(
+      tester,
+      child: const SwingDetailScreen(sessionId: 'session-1'),
+      auth: ReadyTestAuthController(),
+      apiClient: SwingDetailApiClient(),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('QUALITY: WARN'), findsOneWidget);
+    expect(find.text('SCORE: 80'), findsOneWidget);
+    expect(find.text('DURATION: 4.2 SEC'), findsOneWidget);
+    expect(
+      find.text(
+        'WARN: Gallery videos may not use the SwingLens capture guide.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  test('upload capture metadata serializes phase 2 fields', () {
+    const metadata = UploadCaptureMetadata(
+      source: 'camera',
+      guideOverlay: true,
+      platform: 'ios',
+      cameraLensDirection: 'back',
+      nativeHighFpsAvailable: false,
+      fileExtension: '.mov',
+    );
+
+    expect(metadata.toJson(), {
+      'source': 'camera',
+      'guide_overlay': true,
+      'platform': 'ios',
+      'camera_lens_direction': 'back',
+      'native_high_fps_available': false,
+      'file_extension': '.mov',
+    });
   });
 }
