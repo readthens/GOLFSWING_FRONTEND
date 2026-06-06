@@ -33,7 +33,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           PrimaryButton(
             label: 'CONTINUE',
             onPressed: () async {
-              await ref.read(authControllerProvider).updateProfile({'skill_level': _skillLevel});
+              await ref.read(authControllerProvider).updateProfile({
+                'skill_level': _skillLevel,
+              });
               if (context.mounted) context.go('/onboarding/handedness');
             },
           ),
@@ -70,7 +72,9 @@ class _HandednessScreenState extends ConsumerState<HandednessScreen> {
           PrimaryButton(
             label: 'CONTINUE',
             onPressed: () async {
-              await ref.read(authControllerProvider).updateProfile({'handedness': _handedness});
+              await ref.read(authControllerProvider).updateProfile({
+                'handedness': _handedness,
+              });
               if (context.mounted) context.go('/onboarding/goals');
             },
           ),
@@ -92,11 +96,17 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const options = ['Fix slice', 'Better contact', 'More distance', 'Consistency'];
+    const options = [
+      'Fix slice',
+      'Better contact',
+      'More distance',
+      'Consistency',
+    ];
     return OnboardingShell(
       eyebrow: 'GOALS',
       title: 'CHOOSE YOUR TARGET',
-      subtitle: 'We keep the first report focused on one clear practice direction.',
+      subtitle:
+          'We keep the first report focused on one clear practice direction.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -110,7 +120,9 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
                   selected: _goals.contains(option),
                   onSelected: (_) {
                     setState(() {
-                      _goals.contains(option) ? _goals.remove(option) : _goals.add(option);
+                      _goals.contains(option)
+                          ? _goals.remove(option)
+                          : _goals.add(option);
                     });
                   },
                 ),
@@ -122,8 +134,12 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen> {
             onPressed: _goals.isEmpty
                 ? null
                 : () async {
-                    await ref.read(authControllerProvider).updateProfile({'goals': _goals.toList()});
-                    if (context.mounted) context.go('/onboarding/privacy-consent');
+                    await ref.read(authControllerProvider).updateProfile({
+                      'goals': _goals.toList(),
+                    });
+                    if (context.mounted) {
+                      context.go('/onboarding/privacy-consent');
+                    }
                   },
           ),
         ],
@@ -141,7 +157,8 @@ class PrivacyConsentScreen extends ConsumerWidget {
     return OnboardingShell(
       eyebrow: 'PRIVACY CONSENT',
       title: 'VIDEO PROCESSING',
-      subtitle: 'Swing videos are private and used to create analysis. You can delete uploads later.',
+      subtitle:
+          'Swing videos are private and used to create analysis. You can delete uploads later.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -149,7 +166,9 @@ class PrivacyConsentScreen extends ConsumerWidget {
             children: [
               Text('We store videos in private object storage.'),
               Text('We use signed upload links, not public video URLs.'),
-              Text('Model training consent will be separate from analysis consent.'),
+              Text(
+                'Model training consent will be separate from analysis consent.',
+              ),
             ],
           ),
           const SizedBox(height: 18),
@@ -187,23 +206,39 @@ class OnboardingShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppScaffold(
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(eyebrow, style: AppTextStyles.label),
-              const SizedBox(height: 16),
-              Text(title, style: AppTextStyles.title),
-              const SizedBox(height: 12),
-              Text(subtitle, style: AppTextStyles.body),
-              const SizedBox(height: 30),
-              child,
-            ],
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (constraints.maxHeight - 48)
+                        .clamp(0, double.infinity)
+                        .toDouble(),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(eyebrow, style: AppTextStyles.label),
+                      const SizedBox(height: 16),
+                      Text(title, style: AppTextStyles.title),
+                      const SizedBox(height: 12),
+                      Text(subtitle, style: AppTextStyles.body),
+                      const SizedBox(height: 30),
+                      child,
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 }
-

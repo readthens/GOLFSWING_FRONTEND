@@ -28,13 +28,20 @@ class WelcomeScreen extends StatelessWidget {
     return AuthShell(
       eyebrow: 'AI GOLF LAB',
       title: 'FIX THE FRAME THAT MATTERS',
-      subtitle: 'Upload a swing, find the issue, and build the next practice plan.',
+      subtitle:
+          'Upload a swing, find the issue, and build the next practice plan.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PrimaryButton(label: 'CREATE ACCOUNT', onPressed: () => context.go('/auth/sign-up')),
+          PrimaryButton(
+            label: 'CREATE ACCOUNT',
+            onPressed: () => context.go('/auth/sign-up'),
+          ),
           const SizedBox(height: 12),
-          GhostButton(label: 'SIGN IN', onPressed: () => context.go('/auth/sign-in')),
+          GhostButton(
+            label: 'SIGN IN',
+            onPressed: () => context.go('/auth/sign-in'),
+          ),
         ],
       ),
     );
@@ -72,7 +79,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         actionLabel: 'SIGN IN',
         isLoading: auth.state.isLoading,
         error: auth.state.error,
-        onSubmit: () => ref.read(authControllerProvider).login(_email.text, _password.text),
+        onSubmit: () =>
+            ref.read(authControllerProvider).login(_email.text, _password.text),
         footer: TextButton(
           onPressed: () => context.go('/auth/sign-up'),
           child: const Text('CREATE PROFILE'),
@@ -113,7 +121,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         actionLabel: 'CREATE ACCOUNT',
         isLoading: auth.state.isLoading,
         error: auth.state.error,
-        onSubmit: () => ref.read(authControllerProvider).register(_email.text, _password.text),
+        onSubmit: () => ref
+            .read(authControllerProvider)
+            .register(_email.text, _password.text),
         footer: TextButton(
           onPressed: () => context.go('/auth/sign-in'),
           child: const Text('I ALREADY HAVE ACCESS'),
@@ -148,12 +158,23 @@ class AuthForm extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AppTextField(controller: email, label: 'EMAIL', keyboardType: TextInputType.emailAddress),
+        AppTextField(
+          controller: email,
+          label: 'EMAIL',
+          keyboardType: TextInputType.emailAddress,
+        ),
         const SizedBox(height: 12),
-        AppTextField(controller: password, label: 'PASSWORD', obscureText: true),
+        AppTextField(
+          controller: password,
+          label: 'PASSWORD',
+          obscureText: true,
+        ),
         const SizedBox(height: 18),
         if (error != null) ErrorText(error!),
-        PrimaryButton(label: actionLabel, onPressed: isLoading ? null : onSubmit),
+        PrimaryButton(
+          label: actionLabel,
+          onPressed: isLoading ? null : onSubmit,
+        ),
         const SizedBox(height: 12),
         if (footer != null) Center(child: footer!),
       ],
@@ -179,25 +200,47 @@ class AuthShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppScaffold(
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('SWINGLENS AI', style: AppTextStyles.micro),
-              const Spacer(),
-              Text(eyebrow, style: AppTextStyles.label),
-              const SizedBox(height: 14),
-              Text(title, style: AppTextStyles.hero),
-              const SizedBox(height: 12),
-              Text(subtitle, style: AppTextStyles.body),
-              const SizedBox(height: 30),
-              child,
-            ],
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+            final compact = keyboardVisible || constraints.maxHeight < 680;
+            final introGap = compact
+                ? 36.0
+                : (constraints.maxHeight * 0.38).clamp(120.0, 280.0).toDouble();
+
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: (constraints.maxHeight - 48)
+                        .clamp(0, double.infinity)
+                        .toDouble(),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('SWINGLENS AI', style: AppTextStyles.micro),
+                      SizedBox(height: introGap),
+                      Text(eyebrow, style: AppTextStyles.label),
+                      const SizedBox(height: 14),
+                      Text(title, style: AppTextStyles.hero),
+                      const SizedBox(height: 12),
+                      Text(subtitle, style: AppTextStyles.body),
+                      const SizedBox(height: 30),
+                      child,
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 }
-
