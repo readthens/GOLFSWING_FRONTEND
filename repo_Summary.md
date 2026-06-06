@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-06 Phase 3 AI Analysis Prototype
+
+- Added analysis job/result/keyframe models and API client methods for starting analysis, polling jobs, fetching latest session analysis, and loading authenticated keyframe images.
+- Replaced the Phase 2 “AI not enabled” swing detail placeholder with an Analysis Prototype panel covering no-result, pending/running, failed/retry, and succeeded result states.
+- Rendered provisional summary, prototype score, confidence, pose coverage, warnings, limitations, next-capture recommendation, rough phases, and private keyframes in the existing swing detail route.
+- Added widget coverage for no-analysis, running, failed, and succeeded/keyframe states, and extended the iOS simulator smoke to verify the Phase 3 analysis detail panel.
+- Validated with `flutter analyze`, `flutter test`, and `flutter test integration_test/phase2_capture_smoke_test.dart -d 1F342B58-618D-4AF8-A0D9-A9A0DABBAED3`.
+
 ## 2026-06-06 Phase 2 Guided Capture Quality
 
 - Replaced the Phase 1 gallery-only upload screen with a guided capture/review flow using `camera`, retained gallery import through `image_picker`, and kept `video_player` for local preview metadata.

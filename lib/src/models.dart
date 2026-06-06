@@ -205,3 +205,146 @@ class SwingSession {
   final DateTime createdAt;
   final List<SwingVideo> videos;
 }
+
+class AnalysisJob {
+  const AnalysisJob({
+    required this.id,
+    required this.sessionId,
+    required this.swingVideoId,
+    required this.status,
+    required this.progress,
+    required this.createdAt,
+    this.errorMessage,
+    this.rqJobId,
+    this.startedAt,
+    this.completedAt,
+  });
+
+  factory AnalysisJob.fromJson(Map<String, dynamic> json) {
+    return AnalysisJob(
+      id: json['id'] as String,
+      sessionId: json['session_id'] as String,
+      swingVideoId: json['swing_video_id'] as String,
+      status: json['status'] as String,
+      progress: json['progress'] as int? ?? 0,
+      errorMessage: json['error_message'] as String?,
+      rqJobId: json['rq_job_id'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      startedAt: _optionalDateTime(json['started_at']),
+      completedAt: _optionalDateTime(json['completed_at']),
+    );
+  }
+
+  final String id;
+  final String sessionId;
+  final String swingVideoId;
+  final String status;
+  final int progress;
+  final String? errorMessage;
+  final String? rqJobId;
+  final DateTime createdAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+
+  bool get isActive => status == 'pending' || status == 'running';
+  bool get isFailed => status == 'failed';
+  bool get isSucceeded => status == 'succeeded';
+}
+
+class AnalysisKeyframe {
+  const AnalysisKeyframe({
+    required this.id,
+    required this.phaseCode,
+    required this.frameIndex,
+    required this.timestampMs,
+    required this.createdAt,
+    this.confidence,
+  });
+
+  factory AnalysisKeyframe.fromJson(Map<String, dynamic> json) {
+    return AnalysisKeyframe(
+      id: json['id'] as String,
+      phaseCode: json['phase_code'] as String,
+      frameIndex: json['frame_index'] as int,
+      timestampMs: json['timestamp_ms'] as int,
+      confidence: (json['confidence'] as num?)?.toDouble(),
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+
+  final String id;
+  final String phaseCode;
+  final int frameIndex;
+  final int timestampMs;
+  final double? confidence;
+  final DateTime createdAt;
+}
+
+class AnalysisResult {
+  const AnalysisResult({
+    required this.id,
+    required this.jobId,
+    required this.sessionId,
+    required this.swingVideoId,
+    required this.summary,
+    required this.report,
+    required this.phases,
+    required this.metrics,
+    required this.poseSummary,
+    required this.keyframes,
+    required this.createdAt,
+    this.prototypeScore,
+  });
+
+  factory AnalysisResult.fromJson(Map<String, dynamic> json) {
+    return AnalysisResult(
+      id: json['id'] as String,
+      jobId: json['job_id'] as String,
+      sessionId: json['session_id'] as String,
+      swingVideoId: json['swing_video_id'] as String,
+      prototypeScore: (json['prototype_score'] as num?)?.toDouble(),
+      summary: json['summary'] as String? ?? 'Prototype analysis completed.',
+      report: _mapFromJson(json['report']),
+      phases: _listOfMapsFromJson(json['phases']),
+      metrics: _mapFromJson(json['metrics']),
+      poseSummary: _mapFromJson(json['pose_summary']),
+      keyframes: (json['keyframes'] as List<dynamic>? ?? const [])
+          .map(
+            (keyframe) =>
+                AnalysisKeyframe.fromJson(keyframe as Map<String, dynamic>),
+          )
+          .toList(),
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+
+  final String id;
+  final String jobId;
+  final String sessionId;
+  final String swingVideoId;
+  final double? prototypeScore;
+  final String summary;
+  final Map<String, dynamic> report;
+  final List<Map<String, dynamic>> phases;
+  final Map<String, dynamic> metrics;
+  final Map<String, dynamic> poseSummary;
+  final List<AnalysisKeyframe> keyframes;
+  final DateTime createdAt;
+}
+
+DateTime? _optionalDateTime(Object? value) {
+  if (value == null) return null;
+  return DateTime.parse(value as String);
+}
+
+Map<String, dynamic> _mapFromJson(Object? value) {
+  if (value == null) return const {};
+  return Map<String, dynamic>.from(value as Map);
+}
+
+List<Map<String, dynamic>> _listOfMapsFromJson(Object? value) {
+  if (value == null) return const [];
+  return (value as List<dynamic>)
+      .map((item) => Map<String, dynamic>.from(item as Map))
+      .toList();
+}

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -238,20 +240,17 @@ class SwingDetailScreen extends ConsumerWidget {
                                         Text(
                                           '${check.severity.toUpperCase()}: ${check.message}',
                                         ),
-                                      Text('OBJECT KEY: ${video.storageKey}'),
+                                      Text(
+                                        'OBJECT KEY: ${video.storageKey}',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 12),
                                 ],
-                                const InfoPanel(
-                                  children: [
-                                    Text(
-                                      'AI report is not enabled in Phase 2.',
-                                    ),
-                                    Text(
-                                      'Capture quality is advisory until server media probing arrives.',
-                                    ),
-                                  ],
+                                AnalysisPrototypePanel(
+                                  session: session,
+                                  accessToken: token,
                                 ),
                               ],
                             ),
@@ -271,4 +270,347 @@ String _qualityLabel(SwingSession session) {
   if (session.videos.isEmpty) return 'NO QUALITY';
   final status = session.videos.first.qualityStatus;
   return status == null ? 'QUALITY PENDING' : 'QUALITY ${status.toUpperCase()}';
+}
+
+class AnalysisPrototypePanel extends ConsumerStatefulWidget {
+  const AnalysisPrototypePanel({
+    required this.session,
+    required this.accessToken,
+    super.key,
+  });
+
+  final SwingSession session;
+  final String accessToken;
+
+  @override
+  ConsumerState<AnalysisPrototypePanel> createState() =>
+      _AnalysisPrototypePanelState();
+}
+
+class _AnalysisPrototypePanelState
+    extends ConsumerState<AnalysisPrototypePanel> {
+  AnalysisResult? _result;
+  AnalysisJob? _job;
+  bool _isLoading = true;
+  bool _isStarting = false;
+  bool _isPolling = false;
+  String? _error;
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadExistingResult());
+  }
+
+  @override
+  void didUpdateWidget(covariant AnalysisPrototypePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session.id != widget.session.id ||
+        oldWidget.accessToken != widget.accessToken) {
+      _pollTimer?.cancel();
+      _result = null;
+      _job = null;
+      _error = null;
+      _isLoading = true;
+      unawaited(_loadExistingResult());
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadExistingResult() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final result = await ref
+          .read(apiClientProvider)
+          .getAnalysisResult(widget.accessToken, widget.session.id);
+      if (!mounted) return;
+      setState(() {
+        _result = result;
+        _job = null;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to load analysis result.';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _startAnalysis() async {
+    setState(() {
+      _isStarting = true;
+      _error = null;
+    });
+    try {
+      final job = await ref
+          .read(apiClientProvider)
+          .startAnalysisJob(widget.accessToken, widget.session.id);
+      if (!mounted) return;
+      setState(() {
+        _job = job;
+        _isStarting = false;
+      });
+      if (job.isSucceeded) {
+        await _loadExistingResult();
+      } else if (job.isActive) {
+        _schedulePolling();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Unable to start analysis. Check the backend worker.';
+        _isStarting = false;
+      });
+    }
+  }
+
+  void _schedulePolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      unawaited(_pollJob());
+    });
+    unawaited(_pollJob());
+  }
+
+  Future<void> _pollJob() async {
+    final jobId = _job?.id;
+    if (jobId == null || _isPolling) return;
+    _isPolling = true;
+    try {
+      final job = await ref
+          .read(apiClientProvider)
+          .getAnalysisJob(widget.accessToken, jobId);
+      if (!mounted) return;
+      setState(() => _job = job);
+      if (job.isSucceeded) {
+        _pollTimer?.cancel();
+        await _loadExistingResult();
+      } else if (job.isFailed) {
+        _pollTimer?.cancel();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _pollTimer?.cancel();
+      setState(() => _error = 'Unable to poll analysis status.');
+    } finally {
+      _isPolling = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const InfoPanel(
+        children: [
+          Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
+          LinearProgressIndicator(minHeight: 2),
+        ],
+      );
+    }
+
+    final result = _result;
+    if (result != null) {
+      return _AnalysisResultView(
+        result: result,
+        accessToken: widget.accessToken,
+      );
+    }
+
+    final job = _job;
+    if (job != null && job.isActive) {
+      return InfoPanel(
+        children: [
+          const Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
+          Text('${job.status.toUpperCase()} · ${job.progress}%'),
+          LinearProgressIndicator(value: job.progress.clamp(0, 100) / 100),
+          const Text(
+            'Server pose extraction is running. This is not a diagnosis yet.',
+          ),
+        ],
+      );
+    }
+
+    if (job != null && job.isFailed) {
+      return InfoPanel(
+        children: [
+          const Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
+          Text(job.errorMessage ?? 'Analysis failed.'),
+          PrimaryButton(
+            label: _isStarting ? 'STARTING...' : 'RETRY ANALYSIS',
+            onPressed: _isStarting ? null : _startAnalysis,
+          ),
+        ],
+      );
+    }
+
+    return InfoPanel(
+      children: [
+        const Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
+        const Text(
+          'Run the server pose and phase prototype. This is not a swing diagnosis yet.',
+        ),
+        if (_error != null) Text(_error!),
+        PrimaryButton(
+          label: _isStarting ? 'STARTING...' : 'RUN ANALYSIS',
+          onPressed: _isStarting || widget.session.videos.isEmpty
+              ? null
+              : _startAnalysis,
+        ),
+      ],
+    );
+  }
+}
+
+class _AnalysisResultView extends ConsumerWidget {
+  const _AnalysisResultView({required this.result, required this.accessToken});
+
+  final AnalysisResult result;
+  final String accessToken;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final confidence = result.report['confidence_label'] as String?;
+    final recommendation =
+        result.report['next_capture_recommendation'] as String?;
+    final limitations =
+        (result.report['limitations'] as List<dynamic>? ?? const [])
+            .cast<String>();
+    final warnings =
+        (result.report['quality_warnings'] as List<dynamic>? ?? const [])
+            .cast<String>();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InfoPanel(
+          children: [
+            const Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
+            Text(result.summary),
+            Text(
+              'SCORE: ${result.prototypeScore == null ? 'UNSET' : result.prototypeScore!.toStringAsFixed(0)}',
+            ),
+            if (confidence != null)
+              Text('CONFIDENCE: ${confidence.toUpperCase()}'),
+            Text(
+              'POSE COVERAGE: ${_percent(result.poseSummary['pose_coverage'])}',
+            ),
+            if (recommendation != null) Text(recommendation),
+            for (final warning in warnings.take(3)) Text('WARN: $warning'),
+            for (final limitation in limitations.take(2)) Text(limitation),
+          ],
+        ),
+        const SizedBox(height: 18),
+        const Text('ROUGH PHASES', style: AppTextStyles.label),
+        const SizedBox(height: 10),
+        if (result.keyframes.isEmpty)
+          const InfoPanel(children: [Text('No keyframes were produced.')])
+        else
+          for (final keyframe in result.keyframes) ...[
+            _AnalysisKeyframeTile(
+              keyframe: keyframe,
+              accessToken: accessToken,
+              imageUrl: ref
+                  .read(apiClientProvider)
+                  .analysisKeyframeImageUrl(keyframe.id),
+            ),
+            const SizedBox(height: 12),
+          ],
+      ],
+    );
+  }
+}
+
+class _AnalysisKeyframeTile extends StatelessWidget {
+  const _AnalysisKeyframeTile({
+    required this.keyframe,
+    required this.accessToken,
+    required this.imageUrl,
+  });
+
+  final AnalysisKeyframe keyframe;
+  final String accessToken;
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.panel,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Image.network(
+                imageUrl,
+                headers: {'Authorization': 'Bearer $accessToken'},
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: AppColors.panelStrong,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.image_not_supported_outlined),
+                  );
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _phaseLabel(keyframe.phaseCode),
+                  style: AppTextStyles.label,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${(keyframe.timestampMs / 1000).toStringAsFixed(2)} SEC · FRAME ${keyframe.frameIndex}',
+                  style: AppTextStyles.body,
+                ),
+                if (keyframe.confidence != null)
+                  Text(
+                    'CONFIDENCE ${(keyframe.confidence! * 100).toStringAsFixed(0)}%',
+                    style: AppTextStyles.body,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _phaseLabel(String phaseCode) {
+  return switch (phaseCode) {
+    'P1' => 'P1 SETUP',
+    'P4' => 'P4 TOP',
+    'P7' => 'P7 IMPACT',
+    'P10' => 'P10 FINISH',
+    _ => phaseCode.toUpperCase(),
+  };
+}
+
+String _percent(Object? value) {
+  if (value is num) return '${(value * 100).toStringAsFixed(0)}%';
+  return 'UNKNOWN';
 }

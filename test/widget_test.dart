@@ -102,7 +102,13 @@ class NoConsentTestAuthController extends AuthController {
 }
 
 class SwingDetailApiClient extends ApiClient {
-  SwingDetailApiClient() : super(baseUrl: 'http://localhost:8000');
+  SwingDetailApiClient({this.analysisResult, this.startJob, this.polledJob})
+    : super(baseUrl: 'http://localhost:8000');
+
+  final AnalysisResult? analysisResult;
+  final AnalysisJob? startJob;
+  final AnalysisJob? polledJob;
+  int startCalls = 0;
 
   @override
   Future<SwingSession> getSwingSession(
@@ -136,6 +142,100 @@ class SwingDetailApiClient extends ApiClient {
       ],
     });
   }
+
+  @override
+  Future<AnalysisResult?> getAnalysisResult(
+    String accessToken,
+    String sessionId,
+  ) async {
+    return analysisResult;
+  }
+
+  @override
+  Future<AnalysisJob> startAnalysisJob(
+    String accessToken,
+    String sessionId,
+  ) async {
+    startCalls += 1;
+    return startJob ?? _analysisJob(status: 'running', progress: 35);
+  }
+
+  @override
+  Future<AnalysisJob> getAnalysisJob(String accessToken, String jobId) async {
+    return polledJob ??
+        startJob ??
+        _analysisJob(status: 'running', progress: 55);
+  }
+
+  @override
+  String analysisKeyframeImageUrl(String keyframeId) {
+    return 'https://example.test/keyframes/$keyframeId.jpg';
+  }
+}
+
+AnalysisJob _analysisJob({
+  required String status,
+  required int progress,
+  String? errorMessage,
+}) {
+  return AnalysisJob.fromJson({
+    'id': 'analysis-job-1',
+    'user_id': 'local-test-user',
+    'session_id': 'session-1',
+    'swing_video_id': 'video-1',
+    'status': status,
+    'progress': progress,
+    'error_message': errorMessage,
+    'rq_job_id': 'rq-test-id',
+    'created_at': '2026-06-06T00:00:00Z',
+    'started_at': status == 'pending' ? null : '2026-06-06T00:00:01Z',
+    'completed_at': status == 'running' || status == 'pending'
+        ? null
+        : '2026-06-06T00:00:10Z',
+  });
+}
+
+AnalysisResult _analysisResult() {
+  return AnalysisResult.fromJson({
+    'id': 'analysis-result-1',
+    'job_id': 'analysis-job-1',
+    'session_id': 'session-1',
+    'swing_video_id': 'video-1',
+    'prototype_score': 72,
+    'summary':
+        'Prototype analysis sampled 24 frames and detected pose in 18 frames.',
+    'report': {
+      'confidence_label': 'prototype',
+      'limitations': [
+        'This is a pose and phase prototype, not a swing fault diagnosis.',
+      ],
+      'quality_warnings': ['Gallery videos may not use the capture guide.'],
+      'next_capture_recommendation':
+          'Use the guided camera view with full body and club visible.',
+    },
+    'phases': [
+      {
+        'phase_code': 'P1',
+        'label': 'Setup',
+        'frame_index': 0,
+        'timestamp_ms': 0,
+        'confidence': 0.7,
+      },
+    ],
+    'metrics': {'sampled_frames': 24},
+    'pose_summary': {'pose_coverage': 0.75},
+    'keyframes': [
+      {
+        'id': 'keyframe-1',
+        'phase_code': 'P1',
+        'frame_index': 0,
+        'timestamp_ms': 0,
+        'confidence': 0.7,
+        'created_at': '2026-06-06T00:00:11Z',
+      },
+    ],
+    'created_at': '2026-06-06T00:00:11Z',
+  });
 }
 
 void main() {
@@ -340,12 +440,89 @@ void main() {
     expect(find.text('QUALITY: WARN'), findsOneWidget);
     expect(find.text('SCORE: 80'), findsOneWidget);
     expect(find.text('DURATION: 4.2 SEC'), findsOneWidget);
+    expect(find.text('RUN ANALYSIS'), findsOneWidget);
     expect(
       find.text(
         'WARN: Gallery videos may not use the SwingLens capture guide.',
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('analysis panel shows running state after starting a job', (
+    WidgetTester tester,
+  ) async {
+    await pumpStandalone(
+      tester,
+      child: const SwingDetailScreen(sessionId: 'session-1'),
+      auth: ReadyTestAuthController(),
+      apiClient: SwingDetailApiClient(
+        startJob: _analysisJob(status: 'running', progress: 35),
+        polledJob: _analysisJob(status: 'running', progress: 55),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('RUN ANALYSIS'));
+    await tester.tap(find.text('RUN ANALYSIS'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('RUNNING · 55%'), findsOneWidget);
+    expect(find.textContaining('not a diagnosis yet'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('analysis panel shows backend failure and retry action', (
+    WidgetTester tester,
+  ) async {
+    await pumpStandalone(
+      tester,
+      child: const SwingDetailScreen(sessionId: 'session-1'),
+      auth: ReadyTestAuthController(),
+      apiClient: SwingDetailApiClient(
+        startJob: _analysisJob(
+          status: 'failed',
+          progress: 100,
+          errorMessage: 'No frames could be sampled from uploaded video',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('RUN ANALYSIS'));
+    await tester.tap(find.text('RUN ANALYSIS'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('No frames could be sampled from uploaded video'),
+      findsOneWidget,
+    );
+    expect(find.text('RETRY ANALYSIS'), findsOneWidget);
+  });
+
+  testWidgets('analysis panel renders succeeded prototype result and keyframe', (
+    WidgetTester tester,
+  ) async {
+    await pumpStandalone(
+      tester,
+      child: const SwingDetailScreen(sessionId: 'session-1'),
+      auth: ReadyTestAuthController(),
+      apiClient: SwingDetailApiClient(analysisResult: _analysisResult()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANALYSIS PROTOTYPE'), findsOneWidget);
+    expect(
+      find.text(
+        'Prototype analysis sampled 24 frames and detected pose in 18 frames.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('SCORE: 72'), findsOneWidget);
+    expect(find.text('POSE COVERAGE: 75%'), findsOneWidget);
+    expect(find.text('P1 SETUP'), findsOneWidget);
   });
 
   test('upload capture metadata serializes phase 2 fields', () {

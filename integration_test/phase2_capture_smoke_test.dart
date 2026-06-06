@@ -79,6 +79,58 @@ class _SwingDetailApiClient extends ApiClient {
       ],
     });
   }
+
+  @override
+  Future<AnalysisResult?> getAnalysisResult(
+    String accessToken,
+    String sessionId,
+  ) async {
+    return AnalysisResult.fromJson({
+      'id': 'analysis-result-1',
+      'job_id': 'analysis-job-1',
+      'session_id': sessionId,
+      'swing_video_id': 'video-1',
+      'prototype_score': 72,
+      'summary':
+          'Prototype analysis sampled 24 frames and detected pose in 18 frames.',
+      'report': {
+        'confidence_label': 'prototype',
+        'limitations': [
+          'This is a pose and phase prototype, not a swing fault diagnosis.',
+        ],
+        'quality_warnings': ['Gallery videos may not use the capture guide.'],
+        'next_capture_recommendation':
+            'Use the guided camera view with full body and club visible.',
+      },
+      'phases': [
+        {
+          'phase_code': 'P1',
+          'label': 'Setup',
+          'frame_index': 0,
+          'timestamp_ms': 0,
+          'confidence': 0.7,
+        },
+      ],
+      'metrics': {'sampled_frames': 24},
+      'pose_summary': {'pose_coverage': 0.75},
+      'keyframes': [
+        {
+          'id': 'keyframe-1',
+          'phase_code': 'P1',
+          'frame_index': 0,
+          'timestamp_ms': 0,
+          'confidence': 0.7,
+          'created_at': '2026-06-06T00:00:11Z',
+        },
+      ],
+      'created_at': '2026-06-06T00:00:11Z',
+    });
+  }
+
+  @override
+  String analysisKeyframeImageUrl(String keyframeId) {
+    return 'https://example.test/keyframes/$keyframeId.jpg';
+  }
 }
 
 void main() {
@@ -165,7 +217,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Phase 2 quality detail renders on simulator', (tester) async {
+  testWidgets('Phase 3 analysis detail renders on simulator', (tester) async {
     await pumpStandalone(
       tester,
       child: const SwingDetailScreen(sessionId: 'session-1'),
@@ -176,6 +228,8 @@ void main() {
     expect(find.text('QUALITY: WARN'), findsOneWidget);
     expect(find.text('SCORE: 80'), findsOneWidget);
     expect(find.text('DURATION: 4.2 SEC'), findsOneWidget);
+    expect(find.text('ANALYSIS PROTOTYPE'), findsOneWidget);
+    expect(find.text('P1 SETUP'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

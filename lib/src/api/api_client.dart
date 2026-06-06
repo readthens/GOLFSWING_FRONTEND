@@ -111,6 +111,45 @@ class ApiClient {
     return SwingSession.fromJson(response.data as Map<String, dynamic>);
   }
 
+  Future<AnalysisJob> startAnalysisJob(
+    String accessToken,
+    String sessionId,
+  ) async {
+    final response = await _dio.post(
+      '/v1/swing-sessions/$sessionId/analysis-jobs',
+      options: _auth(accessToken),
+    );
+    return AnalysisJob.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<AnalysisJob> getAnalysisJob(String accessToken, String jobId) async {
+    final response = await _dio.get(
+      '/v1/analysis-jobs/$jobId',
+      options: _auth(accessToken),
+    );
+    return AnalysisJob.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<AnalysisResult?> getAnalysisResult(
+    String accessToken,
+    String sessionId,
+  ) async {
+    try {
+      final response = await _dio.get(
+        '/v1/swing-sessions/$sessionId/analysis',
+        options: _auth(accessToken),
+      );
+      return AnalysisResult.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  String analysisKeyframeImageUrl(String keyframeId) {
+    return '${_dio.options.baseUrl}/v1/analysis-keyframes/$keyframeId/image';
+  }
+
   Future<SwingSession> uploadSwingVideo({
     required String accessToken,
     required XFile file,
