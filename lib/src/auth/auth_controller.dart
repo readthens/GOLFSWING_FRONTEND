@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:dio/dio.dart';
 
 import '../api/api_client.dart';
 import '../models.dart';
@@ -192,11 +193,59 @@ class AuthController extends ChangeNotifier {
   }
 
   String _message(Object error) {
-    final value = error.toString();
-    if (value.contains('SocketException') ||
-        value.contains('Connection refused')) {
+    if (error is DioException) {
+      final type = error.type;
+      if (type == DioExceptionType.connectionError ||
+          type == DioExceptionType.connectionTimeout ||
+          type == DioExceptionType.receiveTimeout ||
+          type == DioExceptionType.sendTimeout) {
+        return 'API unavailable. Start the backend and try again.';
+      }
+
+      final statusCode = error.response?.statusCode;
+      final data = error.response?.data;
+      final detail = _detailMessage(data);
+      if (detail != null) {
+        return detail;
+      }
+      if (statusCode == 422) {
+        return 'Enter a valid email and a password with at least 8 characters.';
+      }
+      if (statusCode == 409) {
+        return 'Email is already registered.';
+      }
+      if (statusCode == 401) {
+        return 'Invalid email or password.';
+      }
+    }
+
+    if (error.toString().contains('SocketException') ||
+        error.toString().contains('Connection refused')) {
       return 'API unavailable. Start the backend and try again.';
     }
     return 'Request failed. Check the details and try again.';
+  }
+
+  String? _detailMessage(Object? data) {
+    if (data is Map<String, dynamic>) {
+      final detail = data['detail'];
+      if (detail is String && detail.trim().isNotEmpty) {
+        return _normalizeDetail(detail);
+      }
+      if (detail is List && detail.isNotEmpty) {
+        return 'Enter a valid email and a password with at least 8 characters.';
+      }
+    }
+    return null;
+  }
+
+  String _normalizeDetail(String detail) {
+    if (detail == 'Email is already registered') {
+      return 'Email is already registered.';
+    }
+    if (detail == 'Invalid email or password') {
+      return 'Invalid email or password.';
+    }
+    return detail;
   }
 }

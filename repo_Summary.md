@@ -1,5 +1,10 @@
 # Frontend Repo Summary
 
+## 2026-06-06 Auth Error Detail Fix
+
+- Updated auth error handling to surface backend/Dio response details such as duplicate email, invalid credentials, validation failures, and backend connectivity.
+- Added controller tests for duplicate-email and validation guidance so create-account failures are no longer hidden behind a generic request error.
+
 ## 2026-06-06 Onboarding Navigation Fix
 
 - Fixed onboarding getting stuck on the first screen by separating startup session restoration from form-submit loading state.

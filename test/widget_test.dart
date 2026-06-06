@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
 
 import 'package:swinglens_ai/src/api/api_client.dart';
 import 'package:swinglens_ai/src/app.dart';
@@ -41,6 +42,30 @@ class OnboardingTestAuthController extends AuthController {
       ),
     );
     notifyListeners();
+  }
+}
+
+class FailingRegisterApiClient extends ApiClient {
+  FailingRegisterApiClient({required this.statusCode, required this.data})
+    : super(baseUrl: 'http://localhost:8000');
+
+  final int statusCode;
+  final Object data;
+
+  @override
+  Future<AuthPayload> register({
+    required String email,
+    required String password,
+  }) async {
+    final requestOptions = RequestOptions(path: '/v1/auth/register');
+    throw DioException(
+      requestOptions: requestOptions,
+      response: Response(
+        requestOptions: requestOptions,
+        statusCode: statusCode,
+        data: data,
+      ),
+    );
   }
 }
 
@@ -136,4 +161,39 @@ void main() {
       expect(find.text('SET YOUR BASELINE'), findsNothing);
     },
   );
+
+  test('register surfaces duplicate email from the API', () async {
+    final auth = AuthController(
+      FailingRegisterApiClient(
+        statusCode: 409,
+        data: {'detail': 'Email is already registered'},
+      ),
+    );
+    auth.state = const AuthState();
+
+    await auth.register('golfer@example.com', 'password123');
+
+    expect(auth.state.error, 'Email is already registered.');
+  });
+
+  test('register surfaces validation guidance from the API', () async {
+    final auth = AuthController(
+      FailingRegisterApiClient(
+        statusCode: 422,
+        data: {
+          'detail': [
+            {'msg': 'String should have at least 8 characters'},
+          ],
+        },
+      ),
+    );
+    auth.state = const AuthState();
+
+    await auth.register('golfer@example.com', 'short');
+
+    expect(
+      auth.state.error,
+      'Enter a valid email and a password with at least 8 characters.',
+    );
+  });
 }
