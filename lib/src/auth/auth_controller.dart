@@ -14,7 +14,8 @@ final authControllerProvider = ChangeNotifierProvider<AuthController>((ref) {
 @immutable
 class AuthState {
   const AuthState({
-    this.isLoading = true,
+    this.isRestoring = false,
+    this.isLoading = false,
     this.user,
     this.profile,
     this.accessToken,
@@ -23,6 +24,7 @@ class AuthState {
     this.error,
   });
 
+  final bool isRestoring;
   final bool isLoading;
   final UserProfile? user;
   final GolferProfile? profile;
@@ -41,6 +43,7 @@ class AuthState {
   }
 
   AuthState copyWith({
+    bool? isRestoring,
     bool? isLoading,
     UserProfile? user,
     GolferProfile? profile,
@@ -52,12 +55,15 @@ class AuthState {
     bool clearSession = false,
   }) {
     return AuthState(
+      isRestoring: isRestoring ?? this.isRestoring,
       isLoading: isLoading ?? this.isLoading,
       user: clearSession ? null : user ?? this.user,
       profile: clearSession ? null : profile ?? this.profile,
       accessToken: clearSession ? null : accessToken ?? this.accessToken,
       refreshToken: clearSession ? null : refreshToken ?? this.refreshToken,
-      hasVideoConsent: clearSession ? false : hasVideoConsent ?? this.hasVideoConsent,
+      hasVideoConsent: clearSession
+          ? false
+          : hasVideoConsent ?? this.hasVideoConsent,
       error: clearError ? null : error ?? this.error,
     );
   }
@@ -68,30 +74,41 @@ class AuthController extends ChangeNotifier {
 
   final ApiClient _api;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
-  AuthState state = const AuthState();
+  AuthState state = const AuthState(isRestoring: true);
 
   Future<void> restore() async {
     try {
       final accessToken = await _storage.read(key: 'access_token');
       final refreshToken = await _storage.read(key: 'refresh_token');
       if (accessToken == null || refreshToken == null) {
-        state = state.copyWith(isLoading: false, clearSession: true);
+        state = state.copyWith(
+          isRestoring: false,
+          isLoading: false,
+          clearSession: true,
+        );
         notifyListeners();
         return;
       }
       final me = await _api.getMe(accessToken);
       final consents = await _api.getConsents(accessToken);
       state = AuthState(
+        isRestoring: false,
         isLoading: false,
         user: me.user,
         profile: me.profile,
         accessToken: accessToken,
         refreshToken: refreshToken,
-        hasVideoConsent: consents.any((consent) => consent.consentType == 'video_processing'),
+        hasVideoConsent: consents.any(
+          (consent) => consent.consentType == 'video_processing',
+        ),
       );
     } catch (_) {
       await _storage.deleteAll();
-      state = state.copyWith(isLoading: false, clearSession: true);
+      state = state.copyWith(
+        isRestoring: false,
+        isLoading: false,
+        clearSession: true,
+      );
     }
     notifyListeners();
   }
@@ -111,7 +128,11 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
     try {
       final me = await _api.updateProfile(token, payload);
-      state = state.copyWith(isLoading: false, user: me.user, profile: me.profile);
+      state = state.copyWith(
+        isLoading: false,
+        user: me.user,
+        profile: me.profile,
+      );
     } catch (error) {
       state = state.copyWith(isLoading: false, error: _message(error));
     }
@@ -142,7 +163,11 @@ class AuthController extends ChangeNotifier {
       }
     }
     await _storage.deleteAll();
-    state = state.copyWith(isLoading: false, clearSession: true, clearError: true);
+    state = state.copyWith(
+      isLoading: false,
+      clearSession: true,
+      clearError: true,
+    );
     notifyListeners();
   }
 
@@ -154,6 +179,7 @@ class AuthController extends ChangeNotifier {
       await _storage.write(key: 'access_token', value: payload.accessToken);
       await _storage.write(key: 'refresh_token', value: payload.refreshToken);
       state = AuthState(
+        isRestoring: false,
         isLoading: false,
         user: payload.user,
         accessToken: payload.accessToken,
@@ -167,7 +193,8 @@ class AuthController extends ChangeNotifier {
 
   String _message(Object error) {
     final value = error.toString();
-    if (value.contains('SocketException') || value.contains('Connection refused')) {
+    if (value.contains('SocketException') ||
+        value.contains('Connection refused')) {
       return 'API unavailable. Start the backend and try again.';
     }
     return 'Request failed. Check the details and try again.';

@@ -1,5 +1,11 @@
 # Frontend Repo Summary
 
+## 2026-06-06 Onboarding Navigation Fix
+
+- Fixed onboarding getting stuck on the first screen by separating startup session restoration from form-submit loading state.
+- Made `GoRouter` stable across auth state notifications so onboarding submit events do not reset the router back to `/splash`.
+- Added a widget regression test that verifies profile onboarding advances to handedness after Continue.
+
 ## 2026-06-06 Keyboard Overflow Fix
 
 - Updated auth and onboarding shells to use keyboard-aware scroll layouts instead of fixed-height columns that could overflow when iOS keyboard appears.
