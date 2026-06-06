@@ -179,12 +179,18 @@ class AuthController extends ChangeNotifier {
       final payload = await action();
       await _storage.write(key: 'access_token', value: payload.accessToken);
       await _storage.write(key: 'refresh_token', value: payload.refreshToken);
+      final me = await _api.getMe(payload.accessToken);
+      final consents = await _api.getConsents(payload.accessToken);
       state = AuthState(
         isRestoring: false,
         isLoading: false,
-        user: payload.user,
+        user: me.user,
+        profile: me.profile,
         accessToken: payload.accessToken,
         refreshToken: payload.refreshToken,
+        hasVideoConsent: consents.any(
+          (consent) => consent.consentType == 'video_processing',
+        ),
       );
     } catch (error) {
       state = state.copyWith(isLoading: false, error: _message(error));

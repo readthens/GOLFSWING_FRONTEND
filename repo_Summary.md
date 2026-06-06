@@ -1,5 +1,12 @@
 # Frontend Repo Summary
 
+## 2026-06-07 Phase 3 Hardening
+
+- Hydrated `/me` profile and video consent immediately after login/register so returning onboarded users land on Home instead of being routed back into onboarding.
+- Added a live Phase 3 integration smoke test that logs into the real local backend, opens Swing Library, and verifies the analysis detail panel.
+- Extended analysis job models with attempt metadata, added a delete-video API client method, and improved failed-analysis copy for unsupported/bad/short videos, storage issues, and timeouts.
+- Validated with `flutter analyze`, `flutter test`, and live iOS simulator smoke against `http://127.0.0.1:8000`.
+
 ## 2026-06-06 Phase 3 AI Analysis Prototype
 
 - Added analysis job/result/keyframe models and API client methods for starting analysis, polling jobs, fetching latest session analysis, and loading authenticated keyframe images.

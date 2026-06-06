@@ -213,6 +213,8 @@ class AnalysisJob {
     required this.swingVideoId,
     required this.status,
     required this.progress,
+    required this.attemptCount,
+    required this.maxAttempts,
     required this.createdAt,
     this.errorMessage,
     this.rqJobId,
@@ -227,6 +229,8 @@ class AnalysisJob {
       swingVideoId: json['swing_video_id'] as String,
       status: json['status'] as String,
       progress: json['progress'] as int? ?? 0,
+      attemptCount: json['attempt_count'] as int? ?? 0,
+      maxAttempts: json['max_attempts'] as int? ?? 1,
       errorMessage: json['error_message'] as String?,
       rqJobId: json['rq_job_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -240,6 +244,8 @@ class AnalysisJob {
   final String swingVideoId;
   final String status;
   final int progress;
+  final int attemptCount;
+  final int maxAttempts;
   final String? errorMessage;
   final String? rqJobId;
   final DateTime createdAt;

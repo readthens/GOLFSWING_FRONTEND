@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
 
@@ -69,6 +70,52 @@ class FailingRegisterApiClient extends ApiClient {
         data: data,
       ),
     );
+  }
+}
+
+class ReturningUserApiClient extends ApiClient {
+  ReturningUserApiClient() : super(baseUrl: 'http://localhost:8000');
+
+  @override
+  Future<AuthPayload> login({
+    required String email,
+    required String password,
+  }) async {
+    return AuthPayload.fromJson({
+      'access_token': 'returning-access-token',
+      'refresh_token': 'returning-refresh-token',
+      'user': {
+        'id': 'returning-user',
+        'email': email,
+        'auth_provider': 'password',
+        'created_at': '2026-06-06T00:00:00Z',
+      },
+    });
+  }
+
+  @override
+  Future<MePayload> getMe(String accessToken) async {
+    return MePayload.fromJson({
+      'user': {
+        'id': 'returning-user',
+        'email': 'returning@example.com',
+        'auth_provider': 'password',
+        'created_at': '2026-06-06T00:00:00Z',
+      },
+      'profile': {
+        'user_id': 'returning-user',
+        'handedness': 'right',
+        'skill_level': 'intermediate',
+        'goals': ['clean_contact'],
+      },
+    });
+  }
+
+  @override
+  Future<List<Consent>> getConsents(String accessToken) async {
+    return [
+      Consent.fromJson({'consent_type': 'video_processing'}),
+    ];
   }
 }
 
@@ -384,6 +431,19 @@ void main() {
     );
   });
 
+  test('login hydrates returning user profile and consent', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final auth = AuthController(ReturningUserApiClient());
+    auth.state = const AuthState();
+
+    await auth.login('returning@example.com', 'password123');
+
+    expect(auth.state.isAuthenticated, isTrue);
+    expect(auth.state.isOnboarded, isTrue);
+    expect(auth.state.profile?.skillLevel, 'intermediate');
+    expect(auth.state.hasVideoConsent, isTrue);
+  });
+
   testWidgets('guided capture requires video consent', (
     WidgetTester tester,
   ) async {
@@ -496,7 +556,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('No frames could be sampled from uploaded video'),
+      find.textContaining('could not be read frame by frame'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('DETAIL: No frames could be sampled from uploaded video'),
       findsOneWidget,
     );
     expect(find.text('RETRY ANALYSIS'), findsOneWidget);

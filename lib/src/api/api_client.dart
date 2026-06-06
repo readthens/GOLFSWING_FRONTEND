@@ -150,6 +150,17 @@ class ApiClient {
     return '${_dio.options.baseUrl}/v1/analysis-keyframes/$keyframeId/image';
   }
 
+  Future<void> deleteSwingVideo({
+    required String accessToken,
+    required String sessionId,
+    required String videoId,
+  }) async {
+    await _dio.delete(
+      '/v1/swing-sessions/$sessionId/videos/$videoId',
+      options: _auth(accessToken),
+    );
+  }
+
   Future<SwingSession> uploadSwingVideo({
     required String accessToken,
     required XFile file,

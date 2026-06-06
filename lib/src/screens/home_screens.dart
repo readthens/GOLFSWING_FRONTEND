@@ -433,6 +433,10 @@ class _AnalysisPrototypePanelState
         children: [
           const Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
           Text('${job.status.toUpperCase()} · ${job.progress}%'),
+          if (job.maxAttempts > 1)
+            Text(
+              'ATTEMPT ${job.attemptCount.clamp(1, job.maxAttempts)} OF ${job.maxAttempts}',
+            ),
           LinearProgressIndicator(value: job.progress.clamp(0, 100) / 100),
           const Text(
             'Server pose extraction is running. This is not a diagnosis yet.',
@@ -445,7 +449,8 @@ class _AnalysisPrototypePanelState
       return InfoPanel(
         children: [
           const Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
-          Text(job.errorMessage ?? 'Analysis failed.'),
+          Text(_friendlyAnalysisFailure(job.errorMessage)),
+          if (job.errorMessage != null) Text('DETAIL: ${job.errorMessage}'),
           PrimaryButton(
             label: _isStarting ? 'STARTING...' : 'RETRY ANALYSIS',
             onPressed: _isStarting ? null : _startAnalysis,
@@ -613,4 +618,21 @@ String _phaseLabel(String phaseCode) {
 String _percent(Object? value) {
   if (value is num) return '${(value * 100).toStringAsFixed(0)}%';
   return 'UNKNOWN';
+}
+
+String _friendlyAnalysisFailure(String? message) {
+  final lower = (message ?? '').toLowerCase();
+  if (lower.contains('no frames') || lower.contains('sampled')) {
+    return 'The video could not be read frame by frame. Try a shorter MOV or MP4 recorded at normal speed.';
+  }
+  if (lower.contains('open uploaded video') || lower.contains('opencv')) {
+    return 'The uploaded file could not be opened as a supported video. Choose a fresh camera recording and upload again.';
+  }
+  if (lower.contains('storage') || lower.contains('private storage')) {
+    return 'Private video storage was temporarily unavailable. Retry analysis when the backend is healthy.';
+  }
+  if (lower.contains('timeout')) {
+    return 'Analysis took too long for this prototype. Try a shorter 2 to 15 second swing clip.';
+  }
+  return 'Analysis failed. Try again with a clear 2 to 15 second swing video.';
 }
