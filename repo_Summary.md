@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-07 Phase 4 MVP Diagnosis
+
+- Added an MVP Diagnosis panel to swing detail that renders primary fault, confidence, evidence, one drill, next practice goal, supporting watch items, and diagnosis limitations from `analysis_results.report.diagnosis`.
+- Kept the existing Analysis Prototype panel and keyframes in place while updating copy to make Phase 4 diagnosis explicitly pose-based and not coach-grade.
+- Fixed active-job polling failures so users see an error and can check status again instead of staring at frozen progress.
+- Delayed secure token persistence until login/register hydration succeeds; failed `/me` or consent hydration now clears local token storage.
+- Added widget coverage for diagnosis rendering, polling-error visibility, and hydration-failure token cleanup.
+
 ## 2026-06-07 Phase 3 Hardening
 
 - Hydrated `/me` profile and video consent immediately after login/register so returning onboarded users land on Home instead of being routed back into onboarding.

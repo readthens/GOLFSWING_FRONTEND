@@ -119,6 +119,32 @@ class ReturningUserApiClient extends ApiClient {
   }
 }
 
+class HydrationFailingLoginApiClient extends ApiClient {
+  HydrationFailingLoginApiClient() : super(baseUrl: 'http://localhost:8000');
+
+  @override
+  Future<AuthPayload> login({
+    required String email,
+    required String password,
+  }) async {
+    return AuthPayload.fromJson({
+      'access_token': 'temporary-access-token',
+      'refresh_token': 'temporary-refresh-token',
+      'user': {
+        'id': 'hydration-user',
+        'email': email,
+        'auth_provider': 'password',
+        'created_at': '2026-06-06T00:00:00Z',
+      },
+    });
+  }
+
+  @override
+  Future<MePayload> getMe(String accessToken) async {
+    throw DioException(requestOptions: RequestOptions(path: '/v1/me'));
+  }
+}
+
 class ReadyTestAuthController extends AuthController {
   ReadyTestAuthController()
     : super(ApiClient(baseUrl: 'http://localhost:8000')) {
@@ -149,12 +175,17 @@ class NoConsentTestAuthController extends AuthController {
 }
 
 class SwingDetailApiClient extends ApiClient {
-  SwingDetailApiClient({this.analysisResult, this.startJob, this.polledJob})
-    : super(baseUrl: 'http://localhost:8000');
+  SwingDetailApiClient({
+    this.analysisResult,
+    this.startJob,
+    this.polledJob,
+    this.pollFails = false,
+  }) : super(baseUrl: 'http://localhost:8000');
 
   final AnalysisResult? analysisResult;
   final AnalysisJob? startJob;
   final AnalysisJob? polledJob;
+  final bool pollFails;
   int startCalls = 0;
 
   @override
@@ -209,6 +240,11 @@ class SwingDetailApiClient extends ApiClient {
 
   @override
   Future<AnalysisJob> getAnalysisJob(String accessToken, String jobId) async {
+    if (pollFails) {
+      throw DioException(
+        requestOptions: RequestOptions(path: '/v1/analysis-jobs/$jobId'),
+      );
+    }
     return polledJob ??
         startJob ??
         _analysisJob(status: 'running', progress: 55);
@@ -257,6 +293,32 @@ AnalysisResult _analysisResult() {
         'This is a pose and phase prototype, not a swing fault diagnosis.',
       ],
       'quality_warnings': ['Gallery videos may not use the capture guide.'],
+      'diagnosis': {
+        'version': 'phase4_mvp_v1',
+        'status': 'available',
+        'primary_fault': {
+          'code': 'sway',
+          'label': 'Sway',
+          'confidence': 0.86,
+          'evidence':
+              'Hips shifted laterally 0.42 body-widths by the top of backswing.',
+          'drill':
+              'Make backswing rehearsals with an alignment stick just outside your trail hip.',
+          'next_practice_goal':
+              'Turn into the trail hip without letting the pelvis drift laterally in the backswing.',
+        },
+        'faults': [
+          {'code': 'sway', 'label': 'Sway', 'confidence': 0.86},
+          {
+            'code': 'loss_of_posture',
+            'label': 'Loss of posture',
+            'confidence': 0.55,
+          },
+        ],
+        'limitations': [
+          'MVP diagnosis uses pose landmarks only and does not track the club or ball.',
+        ],
+      },
       'next_capture_recommendation':
           'Use the guided camera view with full body and club visible.',
     },
@@ -286,6 +348,10 @@ AnalysisResult _analysisResult() {
 }
 
 void main() {
+  setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
+  });
+
   Future<void> pumpSwingLensApp(
     WidgetTester tester, {
     AuthController? auth,
@@ -444,6 +510,19 @@ void main() {
     expect(auth.state.hasVideoConsent, isTrue);
   });
 
+  test('login clears token storage when hydration fails', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    const storage = FlutterSecureStorage();
+    final auth = AuthController(HydrationFailingLoginApiClient());
+    auth.state = const AuthState();
+
+    await auth.login('returning@example.com', 'password123');
+
+    expect(auth.state.isAuthenticated, isFalse);
+    expect(await storage.read(key: 'access_token'), isNull);
+    expect(await storage.read(key: 'refresh_token'), isNull);
+  });
+
   testWidgets('guided capture requires video consent', (
     WidgetTester tester,
   ) async {
@@ -566,6 +645,31 @@ void main() {
     expect(find.text('RETRY ANALYSIS'), findsOneWidget);
   });
 
+  testWidgets('analysis panel surfaces polling errors for active jobs', (
+    WidgetTester tester,
+  ) async {
+    await pumpStandalone(
+      tester,
+      child: const SwingDetailScreen(sessionId: 'session-1'),
+      auth: ReadyTestAuthController(),
+      apiClient: SwingDetailApiClient(
+        startJob: _analysisJob(status: 'running', progress: 35),
+        pollFails: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('RUN ANALYSIS'));
+    await tester.tap(find.text('RUN ANALYSIS'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Unable to poll analysis status.'), findsOneWidget);
+    expect(find.text('CHECK STATUS'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('analysis panel renders succeeded prototype result and keyframe', (
     WidgetTester tester,
   ) async {
@@ -586,6 +690,11 @@ void main() {
     );
     expect(find.text('SCORE: 72'), findsOneWidget);
     expect(find.text('POSE COVERAGE: 75%'), findsOneWidget);
+    expect(find.text('MVP DIAGNOSIS'), findsOneWidget);
+    expect(find.text('PRIMARY: SWAY'), findsOneWidget);
+    expect(find.text('CONFIDENCE: 86%'), findsOneWidget);
+    expect(find.textContaining('alignment stick'), findsOneWidget);
+    expect(find.textContaining('NEXT GOAL:'), findsOneWidget);
     expect(find.text('P1 SETUP'), findsOneWidget);
   });
 

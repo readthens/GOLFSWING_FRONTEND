@@ -428,6 +428,17 @@ class _AnalysisPrototypePanelState
     }
 
     final job = _job;
+    if (_error != null && job != null && job.isActive) {
+      return InfoPanel(
+        children: [
+          const Text('ANALYSIS PROTOTYPE', style: AppTextStyles.label),
+          Text('${job.status.toUpperCase()} · ${job.progress}%'),
+          Text(_error!),
+          PrimaryButton(label: 'CHECK STATUS', onPressed: _pollJob),
+        ],
+      );
+    }
+
     if (job != null && job.isActive) {
       return InfoPanel(
         children: [
@@ -494,6 +505,7 @@ class _AnalysisResultView extends ConsumerWidget {
     final warnings =
         (result.report['quality_warnings'] as List<dynamic>? ?? const [])
             .cast<String>();
+    final diagnosis = _mapValue(result.report['diagnosis']);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -515,6 +527,10 @@ class _AnalysisResultView extends ConsumerWidget {
             for (final limitation in limitations.take(2)) Text(limitation),
           ],
         ),
+        if (diagnosis != null) ...[
+          const SizedBox(height: 12),
+          _DiagnosisPanel(diagnosis: diagnosis),
+        ],
         const SizedBox(height: 18),
         const Text('ROUGH PHASES', style: AppTextStyles.label),
         const SizedBox(height: 10),
@@ -531,6 +547,56 @@ class _AnalysisResultView extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
           ],
+      ],
+    );
+  }
+}
+
+class _DiagnosisPanel extends StatelessWidget {
+  const _DiagnosisPanel({required this.diagnosis});
+
+  final Map<String, dynamic> diagnosis;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = diagnosis['status'] as String? ?? 'limited';
+    final primary = _mapValue(diagnosis['primary_fault']);
+    final limitations = _stringList(diagnosis['limitations']);
+    final faults = _mapList(diagnosis['faults']);
+
+    if (primary == null) {
+      return InfoPanel(
+        children: [
+          const Text('MVP DIAGNOSIS', style: AppTextStyles.label),
+          Text(
+            status == 'limited'
+                ? 'DIAGNOSIS LIMITED'
+                : 'NO PRIMARY FAULT FOUND',
+          ),
+          for (final limitation in limitations.take(3)) Text(limitation),
+        ],
+      );
+    }
+
+    final supportingFaults = faults
+        .where((fault) => fault['code'] != primary['code'])
+        .take(2);
+    return InfoPanel(
+      children: [
+        const Text('MVP DIAGNOSIS', style: AppTextStyles.label),
+        Text(
+          'PRIMARY: ${((primary['label'] as String?) ?? 'Swing pattern').toUpperCase()}',
+        ),
+        Text('CONFIDENCE: ${_percent(primary['confidence'])}'),
+        if (primary['evidence'] is String) Text(primary['evidence'] as String),
+        if (primary['drill'] is String) Text('DRILL: ${primary['drill']}'),
+        if (primary['next_practice_goal'] is String)
+          Text('NEXT GOAL: ${primary['next_practice_goal']}'),
+        for (final fault in supportingFaults)
+          Text(
+            'WATCH: ${((fault['label'] as String?) ?? (fault['code'] as String?) ?? 'Pattern').toUpperCase()} ${_percent(fault['confidence'])}',
+          ),
+        const Text('Pose-based MVP guidance. Not a coach-grade diagnosis yet.'),
       ],
     );
   }
@@ -618,6 +684,23 @@ String _phaseLabel(String phaseCode) {
 String _percent(Object? value) {
   if (value is num) return '${(value * 100).toStringAsFixed(0)}%';
   return 'UNKNOWN';
+}
+
+Map<String, dynamic>? _mapValue(Object? value) {
+  if (value == null) return null;
+  return Map<String, dynamic>.from(value as Map);
+}
+
+List<Map<String, dynamic>> _mapList(Object? value) {
+  if (value == null) return const [];
+  return (value as List<dynamic>)
+      .map((item) => Map<String, dynamic>.from(item as Map))
+      .toList();
+}
+
+List<String> _stringList(Object? value) {
+  if (value == null) return const [];
+  return (value as List<dynamic>).whereType<String>().toList();
 }
 
 String _friendlyAnalysisFailure(String? message) {

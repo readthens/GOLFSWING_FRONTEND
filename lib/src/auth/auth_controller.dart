@@ -177,10 +177,10 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
     try {
       final payload = await action();
-      await _storage.write(key: 'access_token', value: payload.accessToken);
-      await _storage.write(key: 'refresh_token', value: payload.refreshToken);
       final me = await _api.getMe(payload.accessToken);
       final consents = await _api.getConsents(payload.accessToken);
+      await _storage.write(key: 'access_token', value: payload.accessToken);
+      await _storage.write(key: 'refresh_token', value: payload.refreshToken);
       state = AuthState(
         isRestoring: false,
         isLoading: false,
@@ -193,7 +193,12 @@ class AuthController extends ChangeNotifier {
         ),
       );
     } catch (error) {
-      state = state.copyWith(isLoading: false, error: _message(error));
+      await _storage.deleteAll();
+      state = state.copyWith(
+        isLoading: false,
+        error: _message(error),
+        clearSession: true,
+      );
     }
     notifyListeners();
   }

@@ -11,6 +11,7 @@ void main() {
 
   const email = String.fromEnvironment('SMOKE_EMAIL');
   const password = String.fromEnvironment('SMOKE_PASSWORD');
+  const expectDiagnosis = bool.fromEnvironment('EXPECT_DIAGNOSIS');
 
   setUp(() async {
     await const FlutterSecureStorage().deleteAll();
@@ -47,6 +48,9 @@ void main() {
     expect(find.text('SWING DETAIL'), findsOneWidget);
     expect(find.text('ANALYSIS PROTOTYPE'), findsOneWidget);
     expect(find.textContaining('Prototype analysis sampled'), findsOneWidget);
+    if (expectDiagnosis) {
+      expect(find.text('MVP DIAGNOSIS'), findsOneWidget);
+    }
     expect(find.text('P1 SETUP'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
