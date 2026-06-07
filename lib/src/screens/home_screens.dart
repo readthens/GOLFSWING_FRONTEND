@@ -506,6 +506,9 @@ class _AnalysisResultView extends ConsumerWidget {
         (result.report['quality_warnings'] as List<dynamic>? ?? const [])
             .cast<String>();
     final diagnosis = _mapValue(result.report['diagnosis']);
+    final visualEvidence = _mapValue(diagnosis?['visual_evidence']);
+    final overlaySegments = _mapList(visualEvidence?['segments']);
+    final frameAspectRatio = _frameAspectRatio(result.metrics);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -544,6 +547,9 @@ class _AnalysisResultView extends ConsumerWidget {
               imageUrl: ref
                   .read(apiClientProvider)
                   .analysisKeyframeImageUrl(keyframe.id),
+              overlay: _overlayForPhase(visualEvidence, keyframe.phaseCode),
+              overlaySegments: overlaySegments,
+              frameAspectRatio: frameAspectRatio,
             ),
             const SizedBox(height: 12),
           ],
@@ -607,11 +613,17 @@ class _AnalysisKeyframeTile extends StatelessWidget {
     required this.keyframe,
     required this.accessToken,
     required this.imageUrl,
+    required this.overlay,
+    required this.overlaySegments,
+    required this.frameAspectRatio,
   });
 
   final AnalysisKeyframe keyframe;
   final String accessToken;
   final String imageUrl;
+  final Map<String, dynamic>? overlay;
+  final List<Map<String, dynamic>> overlaySegments;
+  final double frameAspectRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -628,18 +640,52 @@ class _AnalysisKeyframeTile extends StatelessWidget {
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
             child: AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Image.network(
-                imageUrl,
-                headers: {'Authorization': 'Bearer $accessToken'},
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: AppColors.panelStrong,
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.image_not_supported_outlined),
-                  );
-                },
+              aspectRatio: frameAspectRatio,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    imageUrl,
+                    headers: {'Authorization': 'Bearer $accessToken'},
+                    fit: BoxFit.fill,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: AppColors.panelStrong,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.image_not_supported_outlined),
+                      );
+                    },
+                  ),
+                  if (overlay != null)
+                    CustomPaint(
+                      painter: _SwingSkeletonPainter(
+                        overlay: overlay!,
+                        segments: overlaySegments,
+                      ),
+                    ),
+                  if (overlay != null)
+                    Positioned(
+                      left: 10,
+                      top: 10,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.62),
+                          border: Border.all(color: AppColors.border),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          child: Text(
+                            'SKELETON',
+                            style: AppTextStyles.micro.copyWith(fontSize: 9),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
@@ -662,12 +708,92 @@ class _AnalysisKeyframeTile extends StatelessWidget {
                     'CONFIDENCE ${(keyframe.confidence! * 100).toStringAsFixed(0)}%',
                     style: AppTextStyles.body,
                   ),
+                if (overlay != null)
+                  const Text(
+                    'LINES: SPINE · SHOULDERS · HIPS',
+                    style: AppTextStyles.body,
+                  ),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _SwingSkeletonPainter extends CustomPainter {
+  const _SwingSkeletonPainter({required this.overlay, required this.segments});
+
+  final Map<String, dynamic> overlay;
+  final List<Map<String, dynamic>> segments;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final points = _mapValue(overlay['points']);
+    if (points == null) return;
+
+    final skeletonPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.86)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    final jointPaint = Paint()..color = Colors.white;
+    final guidePaint = Paint()
+      ..color = const Color(0xFFB9FF66).withValues(alpha: 0.92)
+      ..strokeWidth = 2.6
+      ..strokeCap = StrokeCap.round;
+    final faultPaint = Paint()
+      ..color = const Color(0xFFFFC857).withValues(alpha: 0.95)
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+
+    for (final segment in segments) {
+      final start = _pointOffset(points, segment['from'], size);
+      final end = _pointOffset(points, segment['to'], size);
+      if (start != null && end != null) {
+        canvas.drawLine(start, end, skeletonPaint);
+      }
+    }
+
+    for (final line in _mapList(overlay['guide_lines'])) {
+      final paint = line['style'] == 'fault_reference'
+          ? faultPaint
+          : guidePaint;
+      final start = _pointOffset(points, line['from'], size);
+      final end = _pointOffset(points, line['to'], size);
+      if (start != null && end != null) {
+        canvas.drawLine(start, end, paint);
+        continue;
+      }
+      final x = line['x'];
+      if (x is num) {
+        final y1 = (line['y1'] as num? ?? 0).clamp(0, 1).toDouble();
+        final y2 = (line['y2'] as num? ?? 1).clamp(0, 1).toDouble();
+        final dx = x.clamp(0, 1).toDouble() * size.width;
+        canvas.drawLine(
+          Offset(dx, y1 * size.height),
+          Offset(dx, y2 * size.height),
+          paint,
+        );
+      }
+    }
+
+    for (final value in points.values) {
+      final point = _pointOffsetFromMap(value, size);
+      if (point != null) {
+        canvas.drawCircle(
+          point,
+          5.8,
+          Paint()..color = Colors.black.withValues(alpha: 0.28),
+        );
+        canvas.drawCircle(point, 3.4, jointPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SwingSkeletonPainter oldDelegate) {
+    return oldDelegate.overlay != overlay || oldDelegate.segments != segments;
   }
 }
 
@@ -701,6 +827,42 @@ List<Map<String, dynamic>> _mapList(Object? value) {
 List<String> _stringList(Object? value) {
   if (value == null) return const [];
   return (value as List<dynamic>).whereType<String>().toList();
+}
+
+Map<String, dynamic>? _overlayForPhase(
+  Map<String, dynamic>? visualEvidence,
+  String phaseCode,
+) {
+  final overlays = _mapList(visualEvidence?['phase_overlays']);
+  for (final overlay in overlays) {
+    if (overlay['phase_code'] == phaseCode) return overlay;
+  }
+  return null;
+}
+
+Offset? _pointOffset(Map<String, dynamic> points, Object? name, Size size) {
+  if (name is! String) return null;
+  return _pointOffsetFromMap(points[name], size);
+}
+
+Offset? _pointOffsetFromMap(Object? rawPoint, Size size) {
+  if (rawPoint is! Map) return null;
+  final x = rawPoint['x'];
+  final y = rawPoint['y'];
+  if (x is! num || y is! num) return null;
+  return Offset(
+    x.clamp(0, 1).toDouble() * size.width,
+    y.clamp(0, 1).toDouble() * size.height,
+  );
+}
+
+double _frameAspectRatio(Map<String, dynamic> metrics) {
+  final width = metrics['resolution_width'];
+  final height = metrics['resolution_height'];
+  if (width is num && height is num && width > 0 && height > 0) {
+    return (width / height).clamp(0.42, 1.9).toDouble();
+  }
+  return 16 / 9;
 }
 
 String _friendlyAnalysisFailure(String? message) {

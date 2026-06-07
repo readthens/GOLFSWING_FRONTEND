@@ -318,6 +318,59 @@ AnalysisResult _analysisResult() {
         'limitations': [
           'MVP diagnosis uses pose landmarks only and does not track the club or ball.',
         ],
+        'visual_evidence': {
+          'coordinate_space': 'normalized_image',
+          'segments': [
+            {
+              'from': 'left_shoulder',
+              'to': 'right_shoulder',
+              'style': 'skeleton',
+            },
+            {'from': 'left_shoulder', 'to': 'left_elbow', 'style': 'skeleton'},
+            {'from': 'left_elbow', 'to': 'left_wrist', 'style': 'skeleton'},
+            {
+              'from': 'right_shoulder',
+              'to': 'right_elbow',
+              'style': 'skeleton',
+            },
+            {'from': 'right_elbow', 'to': 'right_wrist', 'style': 'skeleton'},
+            {'from': 'left_hip', 'to': 'right_hip', 'style': 'skeleton'},
+          ],
+          'phase_overlays': [
+            {
+              'phase_code': 'P1',
+              'frame_index': 0,
+              'timestamp_ms': 0,
+              'points': {
+                'left_shoulder': {'x': 0.42, 'y': 0.30, 'visibility': 0.9},
+                'right_shoulder': {'x': 0.58, 'y': 0.30, 'visibility': 0.9},
+                'left_elbow': {'x': 0.38, 'y': 0.43, 'visibility': 0.9},
+                'right_elbow': {'x': 0.62, 'y': 0.43, 'visibility': 0.9},
+                'left_wrist': {'x': 0.36, 'y': 0.55, 'visibility': 0.9},
+                'right_wrist': {'x': 0.64, 'y': 0.55, 'visibility': 0.9},
+                'left_hip': {'x': 0.44, 'y': 0.64, 'visibility': 0.9},
+                'right_hip': {'x': 0.56, 'y': 0.64, 'visibility': 0.9},
+                'mid_shoulder': {'x': 0.50, 'y': 0.30, 'visibility': 1.0},
+                'mid_hip': {'x': 0.50, 'y': 0.64, 'visibility': 1.0},
+              },
+              'guide_lines': [
+                {
+                  'label': 'Spine angle',
+                  'from': 'mid_hip',
+                  'to': 'mid_shoulder',
+                  'style': 'spine',
+                },
+                {
+                  'label': 'Setup hip reference',
+                  'x': 0.50,
+                  'y1': 0.12,
+                  'y2': 0.95,
+                  'style': 'fault_reference',
+                },
+              ],
+            },
+          ],
+        },
       },
       'next_capture_recommendation':
           'Use the guided camera view with full body and club visible.',
@@ -331,7 +384,11 @@ AnalysisResult _analysisResult() {
         'confidence': 0.7,
       },
     ],
-    'metrics': {'sampled_frames': 24},
+    'metrics': {
+      'sampled_frames': 24,
+      'resolution_width': 1080,
+      'resolution_height': 1920,
+    },
     'pose_summary': {'pose_coverage': 0.75},
     'keyframes': [
       {
@@ -695,6 +752,8 @@ void main() {
     expect(find.text('CONFIDENCE: 86%'), findsOneWidget);
     expect(find.textContaining('alignment stick'), findsOneWidget);
     expect(find.textContaining('NEXT GOAL:'), findsOneWidget);
+    expect(find.text('SKELETON'), findsOneWidget);
+    expect(find.text('LINES: SPINE · SHOULDERS · HIPS'), findsOneWidget);
     expect(find.text('P1 SETUP'), findsOneWidget);
   });
 

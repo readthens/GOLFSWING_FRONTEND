@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-07 Phase 4.5 Visual Evidence Layer
+
+- Added skeleton and guide-line rendering over analysis keyframes using backend `visual_evidence` normalized points and segments.
+- Updated keyframe cards to use analyzed video aspect ratio instead of fixed 16:9 cropping so overlays align with portrait swing videos.
+- Added visual state coverage for upload, pending analysis, and final diagnosis through `integration_test/visual_phase45_smoke_test.dart`.
+- Added widget coverage for skeleton labels and guide-line metadata in the succeeded analysis state.
+- Captured simulator screenshots and validation logs under root `tests/test_20260607_01`.
+
 ## 2026-06-07 Phase 4 MVP Diagnosis
 
 - Added an MVP Diagnosis panel to swing detail that renders primary fault, confidence, evidence, one drill, next practice goal, supporting watch items, and diagnosis limitations from `analysis_results.report.diagnosis`.
