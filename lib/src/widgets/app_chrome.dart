@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -52,54 +54,112 @@ class AppTabScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      bottomNavigationBar: NavigationBar(
-        key: const ValueKey('bottom-nav-bar'),
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) {
-          navigationShell.goBranch(
-            index,
-            initialLocation: index == navigationShell.currentIndex,
-          );
-        },
-        backgroundColor: Colors.black,
-        surfaceTintColor: Colors.transparent,
-        indicatorColor: AppColors.panelStrong,
-        destinations: const [
-          NavigationDestination(
-            key: ValueKey('bottom-nav-rounds'),
-            icon: Icon(Icons.flag_outlined),
-            selectedIcon: Icon(Icons.flag),
-            label: 'Rounds',
+      bottomNavigationBar: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: _BottomNavColors.surface,
+          border: Border(
+            top: BorderSide(color: _BottomNavColors.border, width: 0.7),
           ),
-          NavigationDestination(
-            key: ValueKey('bottom-nav-swing'),
-            icon: Icon(Icons.sports_golf_outlined),
-            selectedIcon: Icon(Icons.sports_golf),
-            label: 'Swing',
+        ),
+        child: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: NavigationBarTheme(
+              data: NavigationBarThemeData(
+                iconTheme: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return IconThemeData(
+                    size: selected ? 27 : 26,
+                    color: selected
+                        ? _BottomNavColors.selectedIcon
+                        : _BottomNavColors.unselectedIcon,
+                  );
+                }),
+                labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return TextStyle(
+                    fontSize: 12,
+                    height: 1.1,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    letterSpacing: 0,
+                    color: selected
+                        ? _BottomNavColors.selectedLabel
+                        : _BottomNavColors.unselectedLabel,
+                  );
+                }),
+              ),
+              child: NavigationBar(
+                key: const ValueKey('bottom-nav-bar'),
+                height: 84,
+                selectedIndex: navigationShell.currentIndex,
+                onDestinationSelected: (index) {
+                  navigationShell.goBranch(
+                    index,
+                    initialLocation: index == navigationShell.currentIndex,
+                  );
+                },
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                indicatorColor: _BottomNavColors.selectedPill,
+                indicatorShape: const StadiumBorder(
+                  side: BorderSide(
+                    color: _BottomNavColors.selectedPillBorder,
+                    width: 0.8,
+                  ),
+                ),
+                destinations: const [
+                  NavigationDestination(
+                    key: ValueKey('bottom-nav-rounds'),
+                    icon: Icon(Icons.flag_outlined),
+                    selectedIcon: Icon(Icons.flag),
+                    label: 'Rounds',
+                  ),
+                  NavigationDestination(
+                    key: ValueKey('bottom-nav-swing'),
+                    icon: Icon(Icons.sports_golf_outlined),
+                    selectedIcon: Icon(Icons.sports_golf),
+                    label: 'Swing',
+                  ),
+                  NavigationDestination(
+                    key: ValueKey('bottom-nav-home'),
+                    icon: Icon(Icons.home_outlined),
+                    selectedIcon: Icon(Icons.home),
+                    label: 'Home',
+                  ),
+                  NavigationDestination(
+                    key: ValueKey('bottom-nav-tracer'),
+                    icon: Icon(Icons.track_changes_outlined),
+                    selectedIcon: Icon(Icons.track_changes),
+                    label: 'Tracer',
+                  ),
+                  NavigationDestination(
+                    key: ValueKey('bottom-nav-profile'),
+                    icon: Icon(Icons.person_outline),
+                    selectedIcon: Icon(Icons.person),
+                    label: 'Profile',
+                  ),
+                ],
+              ),
+            ),
           ),
-          NavigationDestination(
-            key: ValueKey('bottom-nav-home'),
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            key: ValueKey('bottom-nav-tracer'),
-            icon: Icon(Icons.track_changes_outlined),
-            selectedIcon: Icon(Icons.track_changes),
-            label: 'Tracer',
-          ),
-          NavigationDestination(
-            key: ValueKey('bottom-nav-profile'),
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
+        ),
       ),
       body: navigationShell,
     );
   }
+}
+
+class _BottomNavColors {
+  static const surface = Color(0xF0111217);
+  static const border = Color(0x30FFFFFF);
+  static const selectedPill = Color(0x30F2F2F5);
+  static const selectedPillBorder = Color(0x4DF2F2F5);
+  static const selectedIcon = Color(0xFFF8F8FA);
+  static const unselectedIcon = Color(0xFFE2E2E8);
+  static const selectedLabel = Color(0xFFF8F8FA);
+  static const unselectedLabel = Color(0xFFD7D7DE);
 }
 
 class PrimaryButton extends StatelessWidget {

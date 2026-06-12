@@ -3155,6 +3155,35 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final navBar = tester.widget<NavigationBar>(
+      find.byKey(const ValueKey('bottom-nav-bar')),
+    );
+    expect(navBar.height, 84);
+    expect(navBar.backgroundColor, Colors.transparent);
+    expect(navBar.indicatorColor, const Color(0x30F2F2F5));
+    final indicatorShape = navBar.indicatorShape as StadiumBorder;
+    expect(indicatorShape.side.color, const Color(0x4DF2F2F5));
+    final navTheme = tester.widget<NavigationBarTheme>(
+      find.byType(NavigationBarTheme).last,
+    );
+    expect(
+      navTheme.data.iconTheme!.resolve({WidgetState.selected})!.color,
+      const Color(0xFFF8F8FA),
+    );
+    expect(
+      navTheme.data.iconTheme!.resolve(<WidgetState>{})!.color,
+      const Color(0xFFE2E2E8),
+    );
+    final selectedLabel = navTheme.data.labelTextStyle!.resolve({
+      WidgetState.selected,
+    })!;
+    final unselectedLabel = navTheme.data.labelTextStyle!.resolve(
+      <WidgetState>{},
+    )!;
+    expect(selectedLabel.color, const Color(0xFFF8F8FA));
+    expect(unselectedLabel.color, const Color(0xFFD7D7DE));
+    expect(selectedLabel.letterSpacing, 0);
+
     await tester.tap(find.text('Swing'));
     await tester.pumpAndSettle();
     expect(find.text('SWING LIBRARY'), findsOneWidget);

@@ -1,5 +1,12 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Bottom Navigation Visual Polish
+
+- Updated the persistent bottom navigation to a lighter translucent dark surface with a soft selected capsule, thin top border, and higher-contrast icon/label colors.
+- Moved icon/label state styling into a local `NavigationBarTheme` so the selected and unselected states remain readable on dark simulator/device chrome.
+- Added widget coverage for the updated bottom navigation height, transparent bar background, selected pill color/border, and icon/label contrast.
+- Validated with focused bottom navigation widget coverage, `flutter analyze`, and full `flutter test` (`77 passed`).
+
 ## 2026-06-12 Production Hardening
 
 - Added GitHub Actions frontend CI for Flutter 3.41.1 with `flutter analyze` and `flutter test`.
