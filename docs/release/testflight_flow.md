@@ -8,6 +8,8 @@ flutter test
 flutter build ios --simulator --debug
 ```
 
+For Phase 7 offline sync, also run the live simulator smoke from `docs/release/phase7_live_sync_validation.md`.
+
 ## Release Build
 
 Use a production HTTPS backend URL. Do not ship `localhost`.
@@ -43,3 +45,4 @@ flutter build ipa \
 - Open Settings -> Privacy and Subscription.
 - Restore purchases and confirm entitlement sync.
 - Confirm Delete Account screen requires typed confirmation.
+- Open Sync Center and confirm pending/failed offline work renders correctly.

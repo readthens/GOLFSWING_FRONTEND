@@ -1,5 +1,11 @@
 # Frontend Repo Summary
 
+## 2026-06-12 Production Hardening
+
+- Added GitHub Actions frontend CI for Flutter 3.41.1 with `flutter analyze` and `flutter test`.
+- Added Phase 7 release notes covering offline sync scope, validated gates, demo credentials, release checklist, and known gaps.
+- Updated the TestFlight flow to include the Phase 7 live sync smoke and Sync Center validation.
+
 ## 2026-06-12 Phase 7 Sync Center Cleanup
 
 - Added failed-work accounting to the offline queue and a `clearFailed` cleanup path that preserves pending/syncable items.
