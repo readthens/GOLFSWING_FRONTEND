@@ -36,9 +36,9 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'SIGN IN'));
     await tester.pumpAndSettle(const Duration(seconds: 3));
 
-    expect(find.text('CAPTURE A CLEAN SWING'), findsOneWidget);
+    expect(find.text('COMMAND CENTER'), findsOneWidget);
 
-    await tester.tap(find.text('SWING LIBRARY'));
+    await tester.tap(find.text('Swing'));
     await tester.pumpAndSettle(const Duration(seconds: 3));
 
     expect(find.text('SWING LIBRARY'), findsOneWidget);
@@ -46,12 +46,12 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 3));
 
     expect(find.text('SWING DETAIL'), findsOneWidget);
-    expect(find.text('ANALYSIS PROTOTYPE'), findsOneWidget);
+    expect(find.text('ANALYSIS REVIEW'), findsOneWidget);
     expect(find.textContaining('Prototype analysis sampled'), findsOneWidget);
     if (expectDiagnosis) {
-      expect(find.text('MVP DIAGNOSIS'), findsOneWidget);
+      expect(find.text('FIX THIS FIRST'), findsOneWidget);
     }
-    expect(find.text('P1 SETUP'), findsOneWidget);
+    expect(find.text('VIEW FULL BREAKDOWN'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

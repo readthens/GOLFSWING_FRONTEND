@@ -1,10 +1,30 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../api/api_client.dart';
+import '../auth/apple_sign_in_service.dart';
 import '../auth/auth_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_chrome.dart';
+
+const _configuredDevLoginEmail = String.fromEnvironment('DEV_LOGIN_EMAIL');
+const _configuredDevLoginPassword = String.fromEnvironment(
+  'DEV_LOGIN_PASSWORD',
+);
+const _defaultLocalDevLoginEmail =
+    'swinglens.phase6.tracer.validation.1780845971@example.com';
+const _defaultLocalDevLoginPassword = 'LocalSwing!2026-06-07#06';
+const _devLoginEmail = _configuredDevLoginEmail == ''
+    ? _defaultLocalDevLoginEmail
+    : _configuredDevLoginEmail;
+const _devLoginPassword = _configuredDevLoginPassword == ''
+    ? _defaultLocalDevLoginPassword
+    : _configuredDevLoginPassword;
+
+bool get _devLoginAvailable =>
+    kDebugMode && _devLoginEmail.isNotEmpty && _devLoginPassword.isNotEmpty;
 
 class SplashScreen extends ConsumerWidget {
   const SplashScreen({super.key});
@@ -59,6 +79,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
 
+  void _fillDevLogin() {
+    _email.text = _devLoginEmail;
+    _password.text = _devLoginPassword;
+    _email.selection = TextSelection.collapsed(offset: _email.text.length);
+    _password.selection = TextSelection.collapsed(
+      offset: _password.text.length,
+    );
+  }
+
   @override
   void dispose() {
     _email.dispose();
@@ -84,6 +113,19 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         footer: TextButton(
           onPressed: () => context.go('/auth/sign-up'),
           child: const Text('CREATE PROFILE'),
+        ),
+        secondary: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_devLoginAvailable) ...[
+              GhostButton(
+                label: 'USE LOCAL TEST ACCOUNT',
+                onPressed: _fillDevLogin,
+              ),
+              const SizedBox(height: 12),
+            ],
+            const _AppleSignInAction(),
+          ],
         ),
       ),
     );
@@ -128,6 +170,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           onPressed: () => context.go('/auth/sign-in'),
           child: const Text('I ALREADY HAVE ACCESS'),
         ),
+        secondary: const _AppleSignInAction(),
       ),
     );
   }
@@ -142,6 +185,7 @@ class AuthForm extends StatelessWidget {
     required this.isLoading,
     this.error,
     this.footer,
+    this.secondary,
     super.key,
   });
 
@@ -152,6 +196,7 @@ class AuthForm extends StatelessWidget {
   final bool isLoading;
   final String? error;
   final Widget? footer;
+  final Widget? secondary;
 
   @override
   Widget build(BuildContext context) {
@@ -175,10 +220,67 @@ class AuthForm extends StatelessWidget {
           label: actionLabel,
           onPressed: isLoading ? null : onSubmit,
         ),
+        if (secondary != null) ...[const SizedBox(height: 12), secondary!],
         const SizedBox(height: 12),
         if (footer != null) Center(child: footer!),
       ],
     );
+  }
+}
+
+class _AppleSignInAction extends ConsumerStatefulWidget {
+  const _AppleSignInAction();
+
+  @override
+  ConsumerState<_AppleSignInAction> createState() => _AppleSignInActionState();
+}
+
+class _AppleSignInActionState extends ConsumerState<_AppleSignInAction> {
+  final _apple = AppleSignInService();
+  bool _isLoading = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!appleSignInEnabled) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GhostButton(
+          label: _isLoading ? 'WAITING FOR APPLE...' : 'CONTINUE WITH APPLE',
+          onPressed: _isLoading ? null : _signIn,
+        ),
+        if (_error != null) ErrorText(_error!),
+      ],
+    );
+  }
+
+  Future<void> _signIn() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final nonce = await ref.read(apiClientProvider).createAppleNonce();
+      final credential = await _apple.signIn(nonce: nonce.nonceSha256);
+      await ref
+          .read(authControllerProvider)
+          .loginWithApple(
+            identityToken: credential.identityToken,
+            nonce: credential.nonce,
+            fullName: credential.fullName,
+            authorizationCode: credential.authorizationCode,
+          );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Apple sign-in was not completed.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 }
 

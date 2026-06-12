@@ -1,15 +1,20 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../api/api_client.dart';
 import '../auth/auth_controller.dart';
 import '../capture/native_capture_bridge.dart';
+import '../capture/tracer_readiness.dart';
+import '../offline/offline_queue.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_chrome.dart';
 
@@ -19,9 +24,21 @@ const _maxGoodDurationMs = 15000;
 const _maxAllowedDurationMs = 30000;
 const _minGoodResolutionEdge = 720;
 const _supportedExtensions = {'.mp4', '.mov', '.m4v', '.webm'};
+const _fallbackClubChoices = [
+  'driver',
+  '3 wood',
+  'hybrid',
+  '5 iron',
+  '7 iron',
+  'wedge',
+];
+
+enum UploadMode { analysis, tracer }
 
 class UploadScreen extends ConsumerStatefulWidget {
-  const UploadScreen({super.key});
+  const UploadScreen({this.mode = UploadMode.analysis, super.key});
+
+  final UploadMode mode;
 
   @override
   ConsumerState<UploadScreen> createState() => _UploadScreenState();
@@ -32,12 +49,24 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   final _nativeCaptureBridge = const NativeCaptureBridge();
 
   String _club = '7 iron';
+  List<String> _clubChoices = _fallbackClubChoices;
   String _angle = 'down_the_line';
   String _locationType = 'range';
   String _source = 'gallery';
+  String _tracerStyle = 'signature';
+  String _tracerPointMode = 'ball';
   String? _cameraLensDirection;
   bool _guideOverlay = false;
+  bool _whiteBallConfirmed = false;
   bool? _nativeHighFpsAvailable;
+  NativeCaptureCapabilities _nativeCaptureCapabilities =
+      const NativeCaptureCapabilities(highFpsCaptureAvailable: false);
+  Map<String, dynamic> _nativeCaptureDiagnostics = const {};
+  bool _isNativeTracerRecording = false;
+  Map<String, bool> _recordedTracerReadinessChecks = const {};
+  int? _recordedStableDurationMs;
+  Offset _tracerBallAnchor = const Offset(0.5, 0.78);
+  Offset _tracerTargetPoint = const Offset(0.5, 0.28);
 
   XFile? _file;
   int? _byteSize;
@@ -46,6 +75,16 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   int? _resolutionHeight;
   VideoPlayerController? _videoController;
   CameraController? _cameraController;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
+  Timer? _sensorTimeoutTimer;
+  DateTime? _stableSince;
+  double? _lastAccelX;
+  double? _lastAccelY;
+  double? _lastAccelZ;
+  double? _phoneLevelDegrees;
+  double _stabilityScore = 0;
+  int _stabilitySamples = 0;
+  bool _sensorUnavailable = false;
 
   bool _isUploading = false;
   bool _isInitializingCamera = false;
@@ -54,8 +93,23 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   String? _mediaNotice;
   String? _cameraNotice;
 
+  bool get _isTracerMode => widget.mode == UploadMode.tracer;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isTracerMode) {
+      _angle = 'rear_tracer';
+      _club = 'driver';
+      _startTracerStabilityMonitor();
+    }
+    unawaited(_loadClubBagChoices());
+  }
+
   @override
   void dispose() {
+    _sensorTimeoutTimer?.cancel();
+    _accelerometerSubscription?.cancel();
     _videoController?.dispose();
     _cameraController?.dispose();
     super.dispose();
@@ -68,6 +122,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     final hasHardFailure = qualityChecks.any(
       (check) => check.severity == 'fail',
     );
+    final tracerReadiness = _tracerReadiness;
 
     return AppScaffold(
       child: SafeArea(
@@ -81,10 +136,15 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => context.go('/home'),
               ),
-              const Text('GUIDED CAPTURE', style: AppTextStyles.title),
+              Text(
+                _isTracerMode ? 'SHOT TRACER' : 'GUIDED CAPTURE',
+                style: AppTextStyles.title,
+              ),
               const SizedBox(height: 12),
               Text(
-                'Record with a simple guide or choose a saved swing. Quality checks run before upload.',
+                _isTracerMode
+                    ? 'Use the rear camera guide for auto tracking. Gallery imports are allowed for testing, but weak clips will ask for a better capture.'
+                    : 'Record with a simple guide or choose a saved swing. Quality checks run before upload.',
                 style: AppTextStyles.body.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -110,33 +170,44 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                   videoController: _videoController,
                   file: _file,
                   isRecording: _isRecording,
+                  tracerMode: _isTracerMode,
+                  tracerBallAnchor: _tracerBallAnchor,
+                  tracerTargetPoint: _tracerTargetPoint,
+                  tracerStyle: _tracerStyle,
+                  tracerPointMode: _tracerPointMode,
+                  handedness:
+                      auth.profile?.handedness?.toLowerCase() ?? 'right',
+                  onTracerPointChanged: _isTracerMode
+                      ? _updateTracerPoint
+                      : null,
                 ),
                 const SizedBox(height: 18),
-                _buildSourceActions(),
+                _buildSourceActions(tracerReadiness),
                 if (_cameraNotice != null) ...[
                   const SizedBox(height: 12),
                   InfoPanel(children: [Text(_cameraNotice!)]),
                 ],
                 const SizedBox(height: 18),
-                const Text('ANGLE', style: AppTextStyles.label),
-                const SizedBox(height: 10),
-                SegmentedChoices(
-                  values: const ['face_on', 'down_the_line'],
-                  selected: _angle,
-                  onSelected: (value) => setState(() => _angle = value),
-                ),
-                const SizedBox(height: 18),
+                if (_isTracerMode) ...[
+                  _buildTracerSetupPanel(
+                    auth.profile?.handedness,
+                    tracerReadiness,
+                  ),
+                  const SizedBox(height: 18),
+                ] else ...[
+                  const Text('ANGLE', style: AppTextStyles.label),
+                  const SizedBox(height: 10),
+                  SegmentedChoices(
+                    values: const ['face_on', 'down_the_line'],
+                    selected: _angle,
+                    onSelected: (value) => setState(() => _angle = value),
+                  ),
+                  const SizedBox(height: 18),
+                ],
                 const Text('CLUB', style: AppTextStyles.label),
                 const SizedBox(height: 10),
                 SegmentedChoices(
-                  values: const [
-                    'driver',
-                    '3 wood',
-                    'hybrid',
-                    '5 iron',
-                    '7 iron',
-                    'wedge',
-                  ],
+                  values: _clubChoices,
                   selected: _club,
                   onSelected: (value) => setState(() => _club = value),
                 ),
@@ -160,7 +231,11 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                 ],
                 const SizedBox(height: 12),
                 PrimaryButton(
-                  label: _isUploading ? 'UPLOADING' : 'UPLOAD SWING',
+                  label: _isUploading
+                      ? 'UPLOADING'
+                      : _isTracerMode
+                      ? 'UPLOAD TRACER VIDEO'
+                      : 'UPLOAD SWING',
                   onPressed: _file == null || hasHardFailure || _isUploading
                       ? null
                       : () => _upload(auth.accessToken),
@@ -173,7 +248,40 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     );
   }
 
-  Widget _buildSourceActions() {
+  Future<void> _loadClubBagChoices() async {
+    final token = ref.read(authControllerProvider).state.accessToken;
+    if (token == null) return;
+    try {
+      final clubs = await ref
+          .read(apiClientProvider)
+          .getClubBag(token, activeOnly: true);
+      final labels = clubs
+          .where((club) => club.label.trim().isNotEmpty)
+          .map((club) => club.label.trim())
+          .toList();
+      if (!mounted || labels.isEmpty) return;
+      setState(() {
+        _clubChoices = labels;
+        if (!_clubChoices.contains(_club)) {
+          _club = _isTracerMode && _clubChoices.contains('Driver')
+              ? 'Driver'
+              : _clubChoices.first;
+        }
+      });
+    } catch (_) {
+      // Keep the built-in club selector when profile club bag is unavailable.
+    }
+  }
+
+  Widget _buildSourceActions(TracerReadinessResult tracerReadiness) {
+    final cameraNeedsOpening =
+        _isTracerMode && !(_cameraController?.value.isInitialized ?? false);
+    final recordDisabled =
+        _isInitializingCamera ||
+        (_isTracerMode &&
+            !_isRecording &&
+            !cameraNeedsOpening &&
+            !tracerReadiness.canRecord);
     return Row(
       children: [
         Expanded(
@@ -182,8 +290,12 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                 ? 'STOP RECORDING'
                 : _isInitializingCamera
                 ? 'OPENING CAMERA'
+                : cameraNeedsOpening
+                ? 'OPEN CAMERA'
+                : tracerReadiness.unverifiedTestCapture
+                ? 'UNVERIFIED TEST CAPTURE'
                 : 'RECORD VIDEO',
-            onPressed: _isInitializingCamera ? null : _recordOrStop,
+            onPressed: recordDisabled ? null : _recordOrStop,
           ),
         ),
         const SizedBox(width: 12),
@@ -198,6 +310,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   }
 
   Widget _buildReviewPanel(List<_LocalQualityCheck> qualityChecks) {
+    final tracerReadiness = _effectiveTracerReadiness;
     return InfoPanel(
       children: [
         Text('FILE: ${_file!.name}'),
@@ -205,6 +318,27 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         Text('SIZE: ${_formatBytes(_byteSize)}'),
         Text('DURATION: ${_formatDuration(_durationMs)}'),
         Text('RESOLUTION: ${_formatResolution()}'),
+        if (_isTracerMode) ...[
+          Text('BALL: ${_formatPoint(_tracerBallAnchor)}'),
+          Text('TARGET: ${_formatPoint(_tracerTargetPoint)}'),
+          Text('STYLE: ${_tracerStyle.replaceAll('_', ' ').toUpperCase()}'),
+          Text('AUTO ELIGIBLE: ${tracerReadiness.autoEligible ? 'YES' : 'NO'}'),
+          Text(
+            'STABLE HOLD: ${(_effectiveStableDurationMs / 1000).toStringAsFixed(1)} SEC',
+          ),
+          Text('TRACER CAMERA: ${_nativeCaptureCapabilities.readinessLabel}'),
+          if (_nativeCaptureDiagnostics.isNotEmpty) ...[
+            Text(
+              'NATIVE MODE: ${_nativeCaptureDiagnostics['formatLabel'] ?? 'UNKNOWN'}',
+            ),
+            Text(
+              'MEASURED FPS: ${_formatNumber(_nativeCaptureDiagnostics['measuredFps'])}',
+            ),
+            Text(
+              'DROPPED FRAMES: ${_nativeCaptureDiagnostics['droppedFrameCount'] ?? 0}',
+            ),
+          ],
+        ],
         Row(
           children: [
             Expanded(
@@ -231,6 +365,87 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
             message: check.message,
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildTracerSetupPanel(
+    String? handedness,
+    TracerReadinessResult readiness,
+  ) {
+    final checks = _tracerAlignmentChecks(handedness);
+    return InfoPanel(
+      children: [
+        const Text('TRACER SETUP', style: AppTextStyles.label),
+        const Text('ANGLE: REAR TRACER'),
+        Text('TRACER CAMERA: ${_nativeCaptureCapabilities.readinessLabel}'),
+        Text(
+          'MODE: ${_nativeCaptureCapabilities.preferredMode ?? 'diagnostic'}',
+        ),
+        const Text('Tap or drag on the preview to set the selected marker.'),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _whiteBallConfirmed,
+          onChanged: (value) =>
+              setState(() => _whiteBallConfirmed = value ?? false),
+          title: const Text('WHITE BALL', style: AppTextStyles.label),
+          subtitle: const Text('Auto tracking requires a visible white ball.'),
+          controlAffinity: ListTileControlAffinity.leading,
+        ),
+        SegmentedChoices(
+          values: const ['ball', 'target'],
+          selected: _tracerPointMode,
+          onSelected: (value) => setState(() => _tracerPointMode = value),
+        ),
+        const Text('TRACER STYLE', style: AppTextStyles.label),
+        SegmentedChoices(
+          values: const ['signature', 'broadcast_white', 'power_red'],
+          selected: _tracerStyle,
+          onSelected: (value) => setState(() => _tracerStyle = value),
+        ),
+        _AlignmentRow(label: 'BALL VISIBLE', passed: checks['ball_visible']!),
+        _AlignmentRow(
+          label: 'BALL IN LAUNCH ZONE',
+          passed: readiness.checks['ball_anchor_launch_zone']!,
+        ),
+        _AlignmentRow(
+          label: 'GOLFER IN FRAME',
+          passed: checks['golfer_in_frame']!,
+        ),
+        _AlignmentRow(
+          label: 'TARGET LINE SET',
+          passed: readiness.checks['target_line_set']!,
+        ),
+        _AlignmentRow(
+          label: 'TARGET FORWARD',
+          passed: readiness.checks['target_line_forward']!,
+        ),
+        _AlignmentRow(
+          label: 'REAR CAMERA ACTIVE',
+          passed: readiness.checks['rear_camera_active']!,
+        ),
+        _AlignmentRow(
+          label: 'WHITE BALL CONFIRMED',
+          passed: readiness.checks['white_ball_confirmed']!,
+        ),
+        _AlignmentRow(
+          label:
+              'PHONE LEVEL ${_phoneLevelDegrees == null ? '' : '${_phoneLevelDegrees!.toStringAsFixed(1)}°'}',
+          passed: readiness.checks['phone_level']!,
+        ),
+        _AlignmentRow(
+          label: 'PHONE STABLE',
+          passed: readiness.checks['phone_stable']!,
+        ),
+        _AlignmentRow(
+          label: 'HELD STILL 1 SEC',
+          passed: readiness.checks['stable_duration_1s']!,
+        ),
+        _AlignmentRow(label: 'RANGE READY', passed: readiness.autoEligible),
+        if (readiness.unverifiedTestCapture)
+          const Text(
+            'UNVERIFIED TEST CAPTURE: motion sensors are unavailable, so this upload will not be auto-eligible.',
+          ),
       ],
     );
   }
@@ -264,6 +479,15 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     }
     final controller = _cameraController;
     if (controller == null || !controller.value.isInitialized) return;
+    if (_isTracerMode && !_tracerReadiness.canRecord) {
+      setState(() {
+        _cameraNotice =
+            'Complete the tracer readiness checks before recording.';
+      });
+      return;
+    }
+    final recordingReadiness = _tracerReadiness;
+    final recordingStableDurationMs = _stableDurationMs;
 
     try {
       await _videoController?.dispose();
@@ -275,10 +499,32 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         _resolutionWidth = null;
         _resolutionHeight = null;
         _mediaNotice = null;
+        _recordedTracerReadinessChecks = _isTracerMode
+            ? Map<String, bool>.from(recordingReadiness.checks)
+            : const {};
+        _recordedStableDurationMs = _isTracerMode
+            ? recordingStableDurationMs
+            : null;
       });
+      if (_isTracerMode && _nativeCaptureCapabilities.trustedForTracer) {
+        await _cameraController?.dispose();
+        _cameraController = null;
+        await _nativeCaptureBridge.startTracerCapture();
+        setState(() {
+          _isRecording = true;
+          _isNativeTracerRecording = true;
+          _source = 'native_camera';
+          _guideOverlay = true;
+          _cameraLensDirection = 'back';
+          _cameraNotice = null;
+          _error = null;
+        });
+        return;
+      }
       await controller.startVideoRecording();
       setState(() {
         _isRecording = true;
+        _isNativeTracerRecording = false;
         _cameraNotice = null;
         _error = null;
       });
@@ -291,6 +537,31 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   }
 
   Future<void> _stopRecording() async {
+    if (_isNativeTracerRecording) {
+      try {
+        final result = await _nativeCaptureBridge.stopTracerCapture();
+        setState(() {
+          _isRecording = false;
+          _isNativeTracerRecording = false;
+          _nativeCaptureDiagnostics = result.diagnostics;
+          _cameraLensDirection = 'back';
+        });
+        await _prepareVideo(
+          XFile(result.filePath),
+          source: 'native_camera',
+          guideOverlay: true,
+          cameraLensDirection: 'back',
+        );
+      } catch (_) {
+        setState(() {
+          _isRecording = false;
+          _isNativeTracerRecording = false;
+          _cameraNotice =
+              'Native high-FPS recording could not be saved. Try recording again.';
+        });
+      }
+      return;
+    }
     final controller = _cameraController;
     if (controller == null || !controller.value.isRecordingVideo) return;
     try {
@@ -325,6 +596,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
               'No camera is available here. Choose a saved video to keep testing.';
           _isInitializingCamera = false;
           _nativeHighFpsAvailable = capabilities.highFpsCaptureAvailable;
+          _nativeCaptureCapabilities = capabilities;
         });
         return;
       }
@@ -348,6 +620,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         _cameraController = controller;
         _cameraLensDirection = camera.lensDirection.name;
         _nativeHighFpsAvailable = capabilities.highFpsCaptureAvailable;
+        _nativeCaptureCapabilities = capabilities;
         _isInitializingCamera = false;
       });
     } catch (_) {
@@ -358,6 +631,62 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         _isInitializingCamera = false;
       });
     }
+  }
+
+  void _startTracerStabilityMonitor() {
+    _sensorTimeoutTimer?.cancel();
+    _sensorTimeoutTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted || _stabilitySamples > 0) return;
+      setState(() => _sensorUnavailable = true);
+    });
+    _accelerometerSubscription?.cancel();
+    _accelerometerSubscription =
+        accelerometerEventStream(
+          samplingPeriod: SensorInterval.uiInterval,
+        ).listen(
+          _handleAccelerometerEvent,
+          onError: (_) {
+            if (!mounted) return;
+            setState(() => _sensorUnavailable = true);
+          },
+        );
+  }
+
+  void _handleAccelerometerEvent(AccelerometerEvent event) {
+    final magnitude = math.sqrt(
+      event.x * event.x + event.y * event.y + event.z * event.z,
+    );
+    if (magnitude <= 0) return;
+    final levelDegrees =
+        math.asin((event.x / magnitude).clamp(-1.0, 1.0)).abs() * 180 / math.pi;
+    final previousX = _lastAccelX;
+    final previousY = _lastAccelY;
+    final previousZ = _lastAccelZ;
+    var delta = 0.0;
+    if (previousX != null && previousY != null && previousZ != null) {
+      final dx = event.x - previousX;
+      final dy = event.y - previousY;
+      final dz = event.z - previousZ;
+      delta = math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    final sampleScore = (1 - delta / 1.2).clamp(0.0, 1.0).toDouble();
+    final sampleStable = levelDegrees <= 6 && sampleScore >= 0.72;
+    final now = DateTime.now();
+    if (!mounted) return;
+    setState(() {
+      _sensorUnavailable = false;
+      _lastAccelX = event.x;
+      _lastAccelY = event.y;
+      _lastAccelZ = event.z;
+      _phoneLevelDegrees = levelDegrees;
+      _stabilityScore = _stabilitySamples == 0
+          ? sampleScore
+          : (_stabilityScore * 0.72 + sampleScore * 0.28);
+      _stabilitySamples = sampleStable
+          ? (_stabilitySamples + 1).clamp(0, 120).toInt()
+          : 0;
+      _stableSince = sampleStable ? (_stableSince ?? now) : null;
+    });
   }
 
   Future<void> _prepareVideo(
@@ -412,12 +741,28 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       _resolutionHeight = height;
       _videoController = controller;
       _mediaNotice = notice;
+      if (source != 'native_camera') {
+        _nativeCaptureDiagnostics = const {};
+      }
+      if (!_isTracerMode || source == 'gallery') {
+        _recordedTracerReadinessChecks = const {};
+        _recordedStableDurationMs = null;
+      }
       _error = null;
     });
   }
 
   Future<void> _upload(String? token) async {
     if (token == null || _file == null) return;
+    final captureMetadata = UploadCaptureMetadata(
+      source: _source,
+      guideOverlay: _guideOverlay,
+      platform: _platformName,
+      cameraLensDirection: _cameraLensDirection,
+      nativeHighFpsAvailable: _nativeHighFpsAvailable,
+      fileExtension: _fileExtension(_file!.name),
+      tracer: _isTracerMode ? _tracerMetadata() : null,
+    );
     setState(() {
       _isUploading = true;
       _error = null;
@@ -434,17 +779,33 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
             durationMs: _durationMs,
             resolutionWidth: _resolutionWidth,
             resolutionHeight: _resolutionHeight,
-            captureMetadata: UploadCaptureMetadata(
-              source: _source,
-              guideOverlay: _guideOverlay,
-              platform: _platformName,
-              cameraLensDirection: _cameraLensDirection,
-              nativeHighFpsAvailable: _nativeHighFpsAvailable,
-              fileExtension: _fileExtension(_file!.name),
-            ),
+            sessionType: _isTracerMode ? 'tracer' : 'analysis',
+            captureMetadata: captureMetadata,
           );
       if (mounted) context.go('/swings/${session.id}');
-    } catch (_) {
+    } catch (error) {
+      if (shouldQueueOffline(error)) {
+        await ref
+            .read(offlineQueueProvider)
+            .enqueueSwingUpload(
+              file: _file!,
+              club: _club,
+              angle: _angle,
+              locationType: _locationType,
+              sessionType: _isTracerMode ? 'tracer' : 'analysis',
+              durationMs: _durationMs,
+              resolutionWidth: _resolutionWidth,
+              resolutionHeight: _resolutionHeight,
+              captureMetadata: captureMetadata.toJson(),
+            );
+        if (!mounted) return;
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Upload saved offline. Sync it later.')),
+        );
+        context.go('/profile/sync');
+        return;
+      }
       setState(() {
         _error =
             'Upload failed. Confirm the backend and storage services are running.';
@@ -528,7 +889,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       );
     }
 
-    if (_source == 'camera' && _guideOverlay) {
+    if (_usesGuidedCameraSource && _guideOverlay) {
       checks.add(
         const _LocalQualityCheck.pass(
           'SwingLens guide was active during recording.',
@@ -536,12 +897,230 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       );
     } else {
       checks.add(
-        const _LocalQualityCheck.warn(
-          'Gallery videos may not use the capture guide.',
+        _LocalQualityCheck.warn(
+          _isTracerMode
+              ? 'Auto shot tracer is strongest with guided rear-camera capture.'
+              : 'Gallery videos may not use the capture guide.',
         ),
       );
     }
     return checks;
+  }
+
+  TracerReadinessResult get _tracerReadiness {
+    final cameraReady = _cameraController?.value.isInitialized ?? false;
+    final rearCameraActive = _cameraLensDirection == 'back';
+    final targetLineSet =
+        (_tracerTargetPoint - _tracerBallAnchor).distanceSquared > 0.015;
+    final ballAnchorSet = _pointInGuideBounds(_tracerBallAnchor);
+    final ballAnchorLaunchZone = _pointInLaunchZone(_tracerBallAnchor);
+    final targetLineForward = _targetLineForward;
+    final sensorVerified = !_sensorUnavailable && _stabilitySamples > 0;
+    final phoneLevel = _phoneLevelDegrees != null && _phoneLevelDegrees! <= 6;
+    final stableDurationMs = _stableDurationMs;
+    final phoneStable =
+        _stableSince != null &&
+        stableDurationMs >= 1000 &&
+        _stabilityScore >= 0.72 &&
+        _stabilitySamples >= 8;
+    final guideOverlay =
+        _liveTracerGuideActive || (_usesGuidedCameraSource && _guideOverlay);
+    return buildTracerReadiness(
+      TracerReadinessInput(
+        cameraReady: cameraReady,
+        rearCameraActive: rearCameraActive,
+        guideOverlay: guideOverlay,
+        ballAnchorSet: ballAnchorSet,
+        ballAnchorLaunchZone: ballAnchorLaunchZone,
+        targetLineSet: targetLineSet,
+        targetLineForward: targetLineForward,
+        whiteBallConfirmed: _whiteBallConfirmed,
+        sensorVerified: sensorVerified,
+        phoneLevel: phoneLevel,
+        phoneStable: phoneStable,
+        simulatorOrUnverified: _sensorUnavailable,
+        stableDurationMs: stableDurationMs,
+      ),
+    );
+  }
+
+  TracerReadinessResult get _effectiveTracerReadiness {
+    if (_file != null && _recordedTracerReadinessChecks.isNotEmpty) {
+      return TracerReadinessResult(checks: _recordedTracerReadinessChecks);
+    }
+    return _tracerReadiness;
+  }
+
+  int get _effectiveStableDurationMs {
+    if (_file != null && _recordedStableDurationMs != null) {
+      return _recordedStableDurationMs!;
+    }
+    return _stableDurationMs;
+  }
+
+  int get _stableDurationMs {
+    final stableSince = _stableSince;
+    if (stableSince == null) return 0;
+    return DateTime.now().difference(stableSince).inMilliseconds;
+  }
+
+  bool get _liveTracerGuideActive {
+    return _isTracerMode &&
+        _file == null &&
+        (_cameraController?.value.isInitialized ?? false);
+  }
+
+  bool _pointInGuideBounds(Offset point) {
+    return point.dx >= 0.08 &&
+        point.dx <= 0.92 &&
+        point.dy >= 0.08 &&
+        point.dy <= 0.92;
+  }
+
+  bool _pointInLaunchZone(Offset point) {
+    return point.dx >= 0.18 &&
+        point.dx <= 0.82 &&
+        point.dy >= 0.55 &&
+        point.dy <= 0.92;
+  }
+
+  bool get _targetLineForward {
+    return _tracerTargetPoint.dy <= _tracerBallAnchor.dy - 0.12;
+  }
+
+  bool get _usesGuidedCameraSource {
+    return _source == 'camera' || _source == 'native_camera';
+  }
+
+  void _updateTracerPoint(Offset normalizedPoint) {
+    final clamped = Offset(
+      normalizedPoint.dx.clamp(0.08, 0.92).toDouble(),
+      normalizedPoint.dy.clamp(0.08, 0.92).toDouble(),
+    );
+    setState(() {
+      if (_tracerPointMode == 'target') {
+        _tracerTargetPoint = clamped;
+      } else {
+        _tracerBallAnchor = clamped;
+      }
+    });
+  }
+
+  Map<String, dynamic> _tracerMetadata() {
+    final handedness =
+        ref.read(authControllerProvider).state.profile?.handedness ?? 'right';
+    final checks = _tracerAlignmentChecks(handedness);
+    final readiness = _effectiveTracerReadiness;
+    final stableDurationMs = _effectiveStableDurationMs;
+    final nativeCapture = _nativeCaptureMetadata();
+    return {
+      'ball_anchor': _pointJson(_tracerBallAnchor),
+      'target_line': {
+        'start': _pointJson(_tracerBallAnchor),
+        'end': _pointJson(_tracerTargetPoint),
+      },
+      'handedness': handedness,
+      'guide_version': 'phase6_12_range_tracer_guide_v1',
+      'capture_source': _source,
+      'auto_eligible': readiness.autoEligible,
+      'readiness_checks': readiness.checks,
+      'phone_level_degrees': _phoneLevelDegrees,
+      'stability_score': double.parse(_stabilityScore.toStringAsFixed(3)),
+      'stability_samples': _stabilitySamples,
+      'stable_duration_ms': stableDurationMs,
+      'white_ball_confirmed': _whiteBallConfirmed,
+      'simulator_or_unverified': readiness.checks['simulator_or_unverified'],
+      'native_capture': nativeCapture,
+      'capture_quality': {
+        'source_type': _source,
+        'guide_overlay': _guideOverlay,
+        'camera_lens_direction': _cameraLensDirection,
+        'phone_stability': readiness.autoEligible ? 'stable' : 'unverified',
+        'phone_level_degrees': _phoneLevelDegrees,
+        'stability_score': double.parse(_stabilityScore.toStringAsFixed(3)),
+        'stability_samples': _stabilitySamples,
+        'stable_duration_ms': stableDurationMs,
+        'white_ball_confirmed': _whiteBallConfirmed,
+        'simulator_or_unverified': readiness.checks['simulator_or_unverified'],
+        'duration_ms': _durationMs,
+        'resolution_width': _resolutionWidth,
+        'resolution_height': _resolutionHeight,
+        'native_capture': nativeCapture,
+        'measured_fps': nativeCapture['measured_fps'],
+        'target_fps': nativeCapture['target_fps'],
+        'device_tier': nativeCapture['device_tier'],
+        'native_sample_count': nativeCapture['sample_count'],
+        'dropped_frame_count': nativeCapture['dropped_frame_count'],
+      },
+      'style': {'name': _tracerStyle},
+      'alignment_checks': checks,
+    };
+  }
+
+  Map<String, dynamic> _nativeCaptureMetadata() {
+    final diagnostics = _nativeCaptureDiagnostics;
+    return {
+      'source': diagnostics['source'] ?? 'flutter_camera',
+      'device_tier':
+          diagnostics['deviceTier'] ?? _nativeCaptureCapabilities.deviceTier,
+      'device_model':
+          diagnostics['deviceModel'] ?? _nativeCaptureCapabilities.deviceModel,
+      'system_version':
+          diagnostics['systemVersion'] ??
+          _nativeCaptureCapabilities.systemVersion,
+      'format_label':
+          diagnostics['formatLabel'] ??
+          _nativeCaptureCapabilities.preferredMode,
+      'target_fps':
+          diagnostics['targetFps'] ??
+          _nativeCaptureCapabilities.selectedFormat['targetFps'],
+      'measured_fps': diagnostics['measuredFps'],
+      'width': diagnostics['width'],
+      'height': diagnostics['height'],
+      'lens_position': diagnostics['lensPosition'],
+      'lens_device_type': diagnostics['lensDeviceType'],
+      'stabilization_supported': diagnostics['stabilizationSupported'],
+      'focus_locked': diagnostics['focusLocked'],
+      'exposure_locked': diagnostics['exposureLocked'],
+      'white_balance_locked': diagnostics['whiteBalanceLocked'],
+      'exposure_duration_seconds': diagnostics['exposureDurationSeconds'],
+      'iso': diagnostics['iso'],
+      'sample_count': diagnostics['sampleCount'] ?? 0,
+      'dropped_frame_count': diagnostics['droppedFrameCount'] ?? 0,
+      'first_frame_timestamp_ms': diagnostics['firstFrameTimestampMs'],
+      'last_frame_timestamp_ms': diagnostics['lastFrameTimestampMs'],
+      'started_at_ms': diagnostics['startedAtMs'],
+    };
+  }
+
+  Map<String, bool> _tracerAlignmentChecks(String? handedness) {
+    final hasTarget =
+        (_tracerTargetPoint - _tracerBallAnchor).distanceSquared > 0.015;
+    return {
+      'ball_visible': _file != null || _cameraController != null,
+      'golfer_in_frame': handedness != null || _file != null,
+      'ball_anchor_launch_zone': _pointInLaunchZone(_tracerBallAnchor),
+      'target_line_set': hasTarget,
+      'target_line_forward': _targetLineForward,
+      'phone_level': _effectiveTracerReadiness.checks['phone_level'] ?? false,
+    };
+  }
+
+  Map<String, double> _pointJson(Offset point) {
+    return {
+      'x': double.parse(point.dx.toStringAsFixed(4)),
+      'y': double.parse(point.dy.toStringAsFixed(4)),
+    };
+  }
+
+  String _formatPoint(Offset point) {
+    return '${(point.dx * 100).toStringAsFixed(0)}%, ${(point.dy * 100).toStringAsFixed(0)}%';
+  }
+
+  String _formatNumber(Object? value) {
+    final number = value is num ? value.toDouble() : null;
+    if (number == null) return 'UNKNOWN';
+    return number.toStringAsFixed(1);
   }
 
   String _formatBytes(int? bytes) {
@@ -590,6 +1169,13 @@ class _CapturePreview extends StatelessWidget {
     required this.videoController,
     required this.file,
     required this.isRecording,
+    required this.tracerMode,
+    required this.tracerBallAnchor,
+    required this.tracerTargetPoint,
+    required this.tracerStyle,
+    required this.tracerPointMode,
+    required this.handedness,
+    this.onTracerPointChanged,
   });
 
   final String angle;
@@ -597,6 +1183,13 @@ class _CapturePreview extends StatelessWidget {
   final VideoPlayerController? videoController;
   final XFile? file;
   final bool isRecording;
+  final bool tracerMode;
+  final Offset tracerBallAnchor;
+  final Offset tracerTargetPoint;
+  final String tracerStyle;
+  final String tracerPointMode;
+  final String handedness;
+  final ValueChanged<Offset>? onTracerPointChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -619,6 +1212,7 @@ class _CapturePreview extends StatelessWidget {
               else if (videoReady)
                 GestureDetector(
                   onTap: () {
+                    if (tracerMode) return;
                     if (videoController!.value.isPlaying) {
                       videoController!.pause();
                     } else {
@@ -635,7 +1229,29 @@ class _CapturePreview extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                 ),
-              CustomPaint(painter: _CaptureGuidePainter(angle: angle)),
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTapDown: tracerMode
+                    ? (details) =>
+                          _handleTracerPoint(details.localPosition, context)
+                    : null,
+                onPanUpdate: tracerMode
+                    ? (details) =>
+                          _handleTracerPoint(details.localPosition, context)
+                    : null,
+                child: CustomPaint(
+                  painter: _CaptureGuidePainter(
+                    angle: angle,
+                    isRecording: isRecording,
+                    tracerMode: tracerMode,
+                    tracerBallAnchor: tracerBallAnchor,
+                    tracerTargetPoint: tracerTargetPoint,
+                    tracerStyle: tracerStyle,
+                    tracerPointMode: tracerPointMode,
+                    handedness: handedness,
+                  ),
+                ),
+              ),
               Positioned(
                 left: 14,
                 top: 14,
@@ -651,6 +1267,17 @@ class _CapturePreview extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _handleTracerPoint(Offset localPosition, BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || box.size.isEmpty) return;
+    onTracerPointChanged?.call(
+      Offset(
+        localPosition.dx / box.size.width,
+        localPosition.dy / box.size.height,
       ),
     );
   }
@@ -686,9 +1313,25 @@ class _PreviewBadge extends StatelessWidget {
 }
 
 class _CaptureGuidePainter extends CustomPainter {
-  const _CaptureGuidePainter({required this.angle});
+  const _CaptureGuidePainter({
+    required this.angle,
+    required this.isRecording,
+    required this.tracerMode,
+    required this.tracerBallAnchor,
+    required this.tracerTargetPoint,
+    required this.tracerStyle,
+    required this.tracerPointMode,
+    required this.handedness,
+  });
 
   final String angle;
+  final bool isRecording;
+  final bool tracerMode;
+  final Offset tracerBallAnchor;
+  final Offset tracerTargetPoint;
+  final String tracerStyle;
+  final String tracerPointMode;
+  final String handedness;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -701,7 +1344,9 @@ class _CaptureGuidePainter extends CustomPainter {
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
-    if (angle == 'face_on') {
+    if (tracerMode || angle == 'rear_tracer') {
+      _paintTracerGuide(canvas, size);
+    } else if (angle == 'face_on') {
       canvas.drawLine(
         Offset(size.width * 0.5, size.height * 0.16),
         Offset(size.width * 0.5, size.height * 0.84),
@@ -749,9 +1394,176 @@ class _CaptureGuidePainter extends CustomPainter {
     }
   }
 
+  void _paintTracerGuide(Canvas canvas, Size size) {
+    final silhouetteAlpha = isRecording ? 0.12 : 0.34;
+    final guideAlpha = isRecording ? 0.46 : 0.78;
+    final accent = _tracerGuideAccent(tracerStyle);
+    final linePaint = Paint()
+      ..color = accent.withValues(alpha: guideAlpha)
+      ..strokeWidth = tracerStyle == 'thin_line' ? 1.4 : 2.6
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final markerPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.42)
+      ..style = PaintingStyle.fill;
+    final markerStroke = Paint()
+      ..color = accent.withValues(alpha: 0.9)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    final silhouettePaint = Paint()
+      ..color = Colors.white.withValues(alpha: silhouetteAlpha)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    if (!isRecording) {
+      _drawGolferSilhouette(
+        canvas,
+        size,
+        Rect.fromLTWH(
+          handedness == 'left' ? size.width * 0.52 : size.width * 0.16,
+          size.height * 0.26,
+          size.width * 0.32,
+          size.height * 0.54,
+        ),
+        silhouettePaint,
+        flip: handedness == 'left',
+      );
+    }
+
+    final ball = Offset(
+      tracerBallAnchor.dx * size.width,
+      tracerBallAnchor.dy * size.height,
+    );
+    final target = Offset(
+      tracerTargetPoint.dx * size.width,
+      tracerTargetPoint.dy * size.height,
+    );
+    canvas.drawLine(ball, target, linePaint);
+    _drawArrowHead(canvas, ball, target, linePaint);
+    canvas.drawCircle(ball, 16, markerPaint);
+    canvas.drawCircle(ball, 16, markerStroke);
+    canvas.drawCircle(target, 10, markerPaint);
+    canvas.drawCircle(target, 10, markerStroke);
+
+    final selected = tracerPointMode == 'target' ? target : ball;
+    canvas.drawCircle(
+      selected,
+      tracerPointMode == 'target' ? 15 : 21,
+      Paint()
+        ..color = accent.withValues(alpha: 0.16)
+        ..style = PaintingStyle.fill,
+    );
+
+    final cornerPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.58)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+    const inset = 10.0;
+    const length = 26.0;
+    canvas.drawLine(
+      Offset(inset, inset),
+      Offset(inset + length, inset),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(inset, inset),
+      Offset(inset, inset + length),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(size.width - inset, inset),
+      Offset(size.width - inset - length, inset),
+      cornerPaint,
+    );
+    canvas.drawLine(
+      Offset(size.width - inset, inset),
+      Offset(size.width - inset, inset + length),
+      cornerPaint,
+    );
+  }
+
+  void _drawGolferSilhouette(
+    Canvas canvas,
+    Size size,
+    Rect rect,
+    Paint paint, {
+    required bool flip,
+  }) {
+    double x(double value) => flip
+        ? rect.right - (rect.width * value)
+        : rect.left + (rect.width * value);
+    double y(double value) => rect.top + (rect.height * value);
+    final head = Offset(x(0.5), y(0.08));
+    canvas.drawCircle(head, rect.width * 0.11, paint);
+    final body = Path()
+      ..moveTo(x(0.46), y(0.19))
+      ..quadraticBezierTo(x(0.35), y(0.34), x(0.38), y(0.48))
+      ..lineTo(x(0.47), y(0.56))
+      ..lineTo(x(0.62), y(0.50))
+      ..quadraticBezierTo(x(0.57), y(0.32), x(0.54), y(0.20));
+    canvas.drawPath(body, paint);
+    canvas.drawLine(Offset(x(0.43), y(0.54)), Offset(x(0.33), y(0.92)), paint);
+    canvas.drawLine(Offset(x(0.59), y(0.53)), Offset(x(0.74), y(0.92)), paint);
+    canvas.drawLine(Offset(x(0.47), y(0.36)), Offset(x(0.73), y(0.68)), paint);
+    canvas.drawLine(Offset(x(0.56), y(0.36)), Offset(x(0.73), y(0.68)), paint);
+    canvas.drawLine(Offset(x(0.73), y(0.68)), Offset(x(1.02), y(0.88)), paint);
+  }
+
+  void _drawArrowHead(Canvas canvas, Offset start, Offset end, Paint paint) {
+    final direction = end - start;
+    if (direction.distance < 4) return;
+    final unit = direction / direction.distance;
+    final normal = Offset(-unit.dy, unit.dx);
+    final p1 = end - unit * 18 + normal * 8;
+    final p2 = end - unit * 18 - normal * 8;
+    canvas.drawLine(end, p1, paint);
+    canvas.drawLine(end, p2, paint);
+  }
+
   @override
   bool shouldRepaint(covariant _CaptureGuidePainter oldDelegate) {
-    return oldDelegate.angle != angle;
+    return oldDelegate.angle != angle ||
+        oldDelegate.isRecording != isRecording ||
+        oldDelegate.tracerMode != tracerMode ||
+        oldDelegate.tracerBallAnchor != tracerBallAnchor ||
+        oldDelegate.tracerTargetPoint != tracerTargetPoint ||
+        oldDelegate.tracerStyle != tracerStyle ||
+        oldDelegate.tracerPointMode != tracerPointMode ||
+        oldDelegate.handedness != handedness;
+  }
+}
+
+Color _tracerGuideAccent(String style) {
+  return switch (style) {
+    'signature' ||
+    'signature_green_gold' ||
+    'green_glow' => const Color(0xFF76FF7A),
+    'power_red' => const Color(0xFFFF6A3D),
+    _ => Colors.white,
+  };
+}
+
+class _AlignmentRow extends StatelessWidget {
+  const _AlignmentRow({required this.label, required this.passed});
+
+  final String label;
+  final bool passed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          passed ? Icons.check_circle_outline : Icons.radio_button_unchecked,
+          size: 18,
+          color: AppColors.textPrimary,
+        ),
+        const SizedBox(width: 10),
+        Text(label),
+      ],
+    );
   }
 }
 

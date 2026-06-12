@@ -9,6 +9,9 @@ class AppColors {
   static const border = Color(0x24FFFFFF);
   static const panel = Color(0x0CFFFFFF);
   static const panelStrong = Color(0x14FFFFFF);
+  static const signalGreen = Color(0xFF7CFF9B);
+  static const signalGold = Color(0xFFD8B24C);
+  static const signalRed = Color(0xFFFF5B5B);
 }
 
 class AppTextStyles {
@@ -85,7 +88,9 @@ ThemeData buildSwingLensTheme() {
       side: const BorderSide(color: AppColors.border),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
     ),
-    progressIndicatorTheme: const ProgressIndicatorThemeData(color: AppColors.textPrimary),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: AppColors.textPrimary,
+    ),
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(foregroundColor: AppColors.textPrimary),
     ),

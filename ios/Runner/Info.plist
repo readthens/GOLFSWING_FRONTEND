@@ -22,6 +22,8 @@
 	<string>SwingLens AI uses the camera to record guided golf swing videos.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SwingLens AI records audio with swing videos when the camera is used.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>SwingLens AI uses motion sensors to confirm the phone is level and stable for guided shot tracer capture.</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

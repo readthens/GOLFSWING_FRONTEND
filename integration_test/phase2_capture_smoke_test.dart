@@ -228,8 +228,8 @@ void main() {
     expect(find.text('QUALITY: WARN'), findsOneWidget);
     expect(find.text('SCORE: 80'), findsOneWidget);
     expect(find.text('DURATION: 4.2 SEC'), findsOneWidget);
-    expect(find.text('ANALYSIS PROTOTYPE'), findsOneWidget);
-    expect(find.text('P1 SETUP'), findsOneWidget);
+    expect(find.text('ANALYSIS REVIEW'), findsOneWidget);
+    expect(find.text('VIEW FULL BREAKDOWN'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

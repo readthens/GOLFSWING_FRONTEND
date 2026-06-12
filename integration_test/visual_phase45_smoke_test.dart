@@ -36,8 +36,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'SIGN IN'));
     await tester.pumpAndSettle(const Duration(seconds: 3));
 
-    expect(find.text('CAPTURE A CLEAN SWING'), findsOneWidget);
-    await tester.tap(find.text('CAPTURE SWING'));
+    expect(find.text('COMMAND CENTER'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('home-action-record_swing')));
     await tester.pumpAndSettle(const Duration(seconds: 2));
     expect(find.text('GUIDED CAPTURE'), findsOneWidget);
     debugPrint('VISUAL_PHASE upload_screen');
@@ -45,15 +45,15 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.arrow_back).first);
     await tester.pumpAndSettle(const Duration(seconds: 2));
-    await tester.tap(find.text('SWING LIBRARY'));
+    await tester.tap(find.text('Swing'));
     await tester.pumpAndSettle(const Duration(seconds: 3));
     await tester.tap(find.textContaining('7 IRON').first);
     await tester.pumpAndSettle(const Duration(seconds: 3));
-    expect(find.text('RUN ANALYSIS'), findsOneWidget);
+    expect(find.text('START ANALYSIS'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('RUN ANALYSIS'));
+    await tester.ensureVisible(find.text('START ANALYSIS'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('RUN ANALYSIS'));
+    await tester.tap(find.text('START ANALYSIS'));
     await tester.pump(const Duration(milliseconds: 600));
     await _waitForAnyText(tester, const ['PENDING ·', 'RUNNING ·']);
     debugPrint('VISUAL_PHASE analysis_running');
@@ -61,12 +61,12 @@ void main() {
 
     await _waitForText(
       tester,
-      'MVP DIAGNOSIS',
+      'ANALYSIS REVIEW',
       timeout: const Duration(seconds: 90),
     );
-    await tester.ensureVisible(find.text('P1 SETUP'));
+    await tester.ensureVisible(find.text('VIEW FULL BREAKDOWN'));
     await tester.pumpAndSettle(const Duration(seconds: 2));
-    expect(find.text('SKELETON'), findsWidgets);
+    expect(find.text('EVIDENCE REPLAY'), findsOneWidget);
     debugPrint('VISUAL_PHASE diagnosis_result');
     await tester.pump(const Duration(seconds: 6));
     expect(tester.takeException(), isNull);

@@ -4,10 +4,14 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:dio/dio.dart';
 
 import '../api/api_client.dart';
+import '../billing/revenuecat_service.dart';
 import '../models.dart';
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>((ref) {
-  final controller = AuthController(ref.read(apiClientProvider));
+  final controller = AuthController(
+    ref.read(apiClientProvider),
+    revenueCat: ref.read(revenueCatServiceProvider),
+  );
   controller.restore();
   return controller;
 });
@@ -71,9 +75,11 @@ class AuthState {
 }
 
 class AuthController extends ChangeNotifier {
-  AuthController(this._api);
+  AuthController(this._api, {RevenueCatService? revenueCat})
+    : _revenueCat = revenueCat ?? RevenueCatService();
 
   final ApiClient _api;
+  final RevenueCatService _revenueCat;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   AuthState state = const AuthState(isRestoring: true);
 
@@ -92,6 +98,7 @@ class AuthController extends ChangeNotifier {
       }
       final me = await _api.getMe(accessToken);
       final consents = await _api.getConsents(accessToken);
+      await _configureBilling(me.user.id);
       state = AuthState(
         isRestoring: false,
         isLoading: false,
@@ -120,6 +127,22 @@ class AuthController extends ChangeNotifier {
 
   Future<void> login(String email, String password) async {
     await _authenticate(() => _api.login(email: email, password: password));
+  }
+
+  Future<void> loginWithApple({
+    required String identityToken,
+    String? nonce,
+    String? fullName,
+    String? authorizationCode,
+  }) async {
+    await _authenticate(
+      () => _api.loginWithApple(
+        identityToken: identityToken,
+        nonce: nonce,
+        fullName: fullName,
+        authorizationCode: authorizationCode,
+      ),
+    );
   }
 
   Future<void> updateProfile(Map<String, dynamic> payload) async {
@@ -172,6 +195,25 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteAccount() async {
+    final token = state.accessToken;
+    if (token == null) return;
+    state = state.copyWith(isLoading: true, clearError: true);
+    notifyListeners();
+    try {
+      await _api.deleteAccount(token);
+      await _storage.deleteAll();
+      state = state.copyWith(
+        isLoading: false,
+        clearSession: true,
+        clearError: true,
+      );
+    } catch (error) {
+      state = state.copyWith(isLoading: false, error: _message(error));
+    }
+    notifyListeners();
+  }
+
   Future<void> _authenticate(Future<AuthPayload> Function() action) async {
     state = state.copyWith(isLoading: true, clearError: true);
     notifyListeners();
@@ -179,6 +221,7 @@ class AuthController extends ChangeNotifier {
       final payload = await action();
       final me = await _api.getMe(payload.accessToken);
       final consents = await _api.getConsents(payload.accessToken);
+      await _configureBilling(payload.user.id);
       await _storage.write(key: 'access_token', value: payload.accessToken);
       await _storage.write(key: 'refresh_token', value: payload.refreshToken);
       state = AuthState(
@@ -201,6 +244,14 @@ class AuthController extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  Future<void> _configureBilling(String userId) async {
+    try {
+      await _revenueCat.configure(userId);
+    } catch (_) {
+      // Billing setup must not block auth or local development.
+    }
   }
 
   String _message(Object error) {

@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../theme/app_theme.dart';
 
 class AppScaffold extends StatelessWidget {
-  const AppScaffold({required this.child, super.key});
+  const AppScaffold({required this.child, this.bottomNavigationBar, super.key});
 
   final Widget child;
+  final Widget? bottomNavigationBar;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: bottomNavigationBar,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -37,6 +40,64 @@ class AppScaffold extends StatelessWidget {
           child,
         ],
       ),
+    );
+  }
+}
+
+class AppTabScaffold extends StatelessWidget {
+  const AppTabScaffold({required this.navigationShell, super.key});
+
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      bottomNavigationBar: NavigationBar(
+        key: const ValueKey('bottom-nav-bar'),
+        selectedIndex: navigationShell.currentIndex,
+        onDestinationSelected: (index) {
+          navigationShell.goBranch(
+            index,
+            initialLocation: index == navigationShell.currentIndex,
+          );
+        },
+        backgroundColor: Colors.black,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: AppColors.panelStrong,
+        destinations: const [
+          NavigationDestination(
+            key: ValueKey('bottom-nav-rounds'),
+            icon: Icon(Icons.flag_outlined),
+            selectedIcon: Icon(Icons.flag),
+            label: 'Rounds',
+          ),
+          NavigationDestination(
+            key: ValueKey('bottom-nav-swing'),
+            icon: Icon(Icons.sports_golf_outlined),
+            selectedIcon: Icon(Icons.sports_golf),
+            label: 'Swing',
+          ),
+          NavigationDestination(
+            key: ValueKey('bottom-nav-home'),
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            key: ValueKey('bottom-nav-tracer'),
+            icon: Icon(Icons.track_changes_outlined),
+            selectedIcon: Icon(Icons.track_changes),
+            label: 'Tracer',
+          ),
+          NavigationDestination(
+            key: ValueKey('bottom-nav-profile'),
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
+      body: navigationShell,
     );
   }
 }
