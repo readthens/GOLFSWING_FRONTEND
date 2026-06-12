@@ -16,6 +16,13 @@ import '../widgets/swing_overlay_painter.dart';
 import 'shot_tracer_screens.dart';
 import 'swing_film_room.dart';
 
+const _homeGolferProAsset = 'assets/home/center_golfer_pro.png';
+const _homeGolferAmateurAsset = 'assets/home/center_golfer_amateur.png';
+const _homeGolferJuniorAsset = 'assets/home/center_golfer_junior.png';
+const _homeGolferGoldAsset = 'assets/home/center_golfer_gold.png';
+const _homeAvatarAsset = 'assets/home/avatar_golfer_camera.png';
+const _homeFallbackAvatarAsset = 'assets/home/avatar_fallback.png';
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -118,32 +125,38 @@ class _HomeDashboardView extends StatelessWidget {
       onRefresh: onRefresh,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 110),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _DashboardHeader(user: dashboard.user, accessToken: accessToken),
-            const SizedBox(height: 18),
+            const SizedBox(height: 20),
             if (loadFailed) ...[
               const _DashboardNotice(
                 status: 'OFFLINE',
                 body:
                     'Dashboard service unavailable. Core capture actions are still ready.',
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
             ],
-            _PriorityRow(item: dashboard.priorityItem),
-            const SizedBox(height: 14),
+            if (dashboard.priorityItem != null) ...[
+              _PriorityRow(item: dashboard.priorityItem),
+              const SizedBox(height: 18),
+            ],
+            _LastGameHeroCard(
+              item: _lastGameItem(dashboard),
+              metrics: dashboard.performanceSnapshot.metrics,
+            ),
+            const SizedBox(height: 24),
+            _PerformanceHeroSection(
+              user: dashboard.user,
+              hero: dashboard.hero,
+              section: dashboard.performanceSnapshot,
+              focus: dashboard.todayFocus,
+            ),
+            const SizedBox(height: 24),
             _QuickActionGrid(actions: dashboard.quickActions),
-            const SizedBox(height: 18),
-            _HeroPerformanceCard(item: dashboard.hero),
-            const SizedBox(height: 18),
-            _PerformanceSnapshot(section: dashboard.performanceSnapshot),
-            const SizedBox(height: 18),
-            _FocusCard(item: dashboard.todayFocus),
-            const SizedBox(height: 18),
-            _FavoritesPreview(items: dashboard.favoritesPreview),
-            const SizedBox(height: 18),
+            const SizedBox(height: 24),
             _RecentActivityList(items: dashboard.recentActivity),
           ],
         ),
@@ -188,39 +201,148 @@ class _DashboardHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final name = _dashboardDisplayName(user);
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('SWINGLENS AI', style: AppTextStyles.micro),
-              const SizedBox(height: 10),
-              Text(
-                'COMMAND CENTER',
-                style: AppTextStyles.title.copyWith(fontSize: 28),
+        Row(
+          children: [
+            const Expanded(child: _HomeWordmark()),
+            IconButton(
+              key: const ValueKey('home-notifications-button'),
+              tooltip: 'Notifications',
+              icon: _NotificationBell(accessToken: accessToken),
+              onPressed: () => context.go('/notifications'),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              key: const ValueKey('home-profile-button'),
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => context.go('/profile'),
+              child: Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0x33FFFFFF)),
+                  image: const DecorationImage(
+                    image: AssetImage(_homeAvatarAsset),
+                    fit: BoxFit.cover,
+                  ),
+                ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Good day, $name. Track. Analyze. Improve.',
-                style: AppTextStyles.body,
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Good morning, $name.',
+                    style: AppTextStyles.title.copyWith(
+                      fontSize: 27,
+                      height: 1.08,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Every shot you track makes you better.',
+                    style: AppTextStyles.body.copyWith(
+                      color: const Color(0xFFB7C0C8),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-        IconButton(
-          key: const ValueKey('home-notifications-button'),
-          tooltip: 'Notifications',
-          icon: _NotificationBell(accessToken: accessToken),
-          onPressed: () => context.go('/notifications'),
-        ),
-        IconButton(
-          key: const ValueKey('home-profile-button'),
-          tooltip: 'Profile',
-          icon: const Icon(Icons.person_outline),
-          onPressed: () => context.go('/profile'),
+            ),
+            const SizedBox(width: 14),
+            const _WeatherStatusPill(),
+          ],
         ),
       ],
+    );
+  }
+}
+
+class _HomeWordmark extends StatelessWidget {
+  const _HomeWordmark();
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        style: AppTextStyles.micro.copyWith(
+          fontSize: 13,
+          letterSpacing: 1.9,
+          color: const Color(0xFFF4F6F8),
+        ),
+        children: const [
+          TextSpan(text: 'SWINGLENS '),
+          TextSpan(
+            text: 'AI',
+            style: TextStyle(color: Color(0xFF9FE870)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeatherStatusPill extends StatelessWidget {
+  const _WeatherStatusPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('home-weather-pill'),
+      width: 126,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xCC101418),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.wb_sunny_outlined,
+            size: 20,
+            color: AppColors.signalGold,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '--°',
+                  style: AppTextStyles.micro.copyWith(
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                    letterSpacing: 0,
+                  ),
+                ),
+                Text(
+                  'Weather off',
+                  style: AppTextStyles.micro.copyWith(
+                    color: AppColors.textMuted,
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -331,10 +453,11 @@ class _DashboardNotice extends StatelessWidget {
   }
 }
 
-class _HeroPerformanceCard extends StatelessWidget {
-  const _HeroPerformanceCard({required this.item});
+class _LastGameHeroCard extends StatelessWidget {
+  const _LastGameHeroCard({required this.item, required this.metrics});
 
   final DashboardItem item;
+  final List<DashboardMetric> metrics;
 
   @override
   Widget build(BuildContext context) {
@@ -342,61 +465,79 @@ class _HeroPerformanceCard extends StatelessWidget {
     final confidence = item.metadata['confidence'];
     return InkWell(
       key: const ValueKey('home-hero-card'),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(22),
       onTap: () => _openDashboardRoute(context, item.route),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 214),
-        padding: const EdgeInsets.all(18),
+        width: double.infinity,
+        height: 184,
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.panelStrong,
-          border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFF0B0E12),
+          border: Border.all(color: const Color(0x1FFFFFFF)),
+          borderRadius: BorderRadius.circular(22),
         ),
         child: Stack(
           children: [
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: CustomPaint(painter: _LastGameVisualPainter()),
+              ),
+            ),
+            const Positioned(right: 14, top: 14, child: _TracerRecapButton()),
             Positioned(
-              right: -8,
-              top: -8,
+              right: -26,
+              bottom: -42,
               child: Icon(
                 item.type.contains('tracer')
                     ? Icons.track_changes
                     : Icons.sports_golf,
-                size: 132,
-                color: Colors.white.withValues(alpha: 0.045),
+                size: 154,
+                color: Colors.white.withValues(alpha: 0.035),
               ),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.title.toUpperCase(),
-                        style: AppTextStyles.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (item.status != null) ...[
-                      const SizedBox(width: 10),
-                      _StatusPill(label: item.status!),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 22),
                 Text(
-                  _heroValue(score, confidence, item.type),
-                  style: AppTextStyles.hero.copyWith(fontSize: 52),
+                  'LAST GAME',
+                  style: AppTextStyles.label.copyWith(
+                    color: const Color(0xFF9FE870),
+                  ),
                 ),
                 const SizedBox(height: 10),
-                Text(item.body ?? '', style: AppTextStyles.body),
-                const SizedBox(height: 18),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton(
-                    onPressed: () => _openDashboardRoute(context, item.route),
-                    child: const Text('OPEN'),
+                Text(
+                  item.title.isEmpty ? 'Latest Session' : item.title,
+                  style: AppTextStyles.title.copyWith(fontSize: 21),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  item.body ?? 'Track more rounds to build your recap.',
+                  style: AppTextStyles.body.copyWith(fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const Spacer(),
+                SizedBox(
+                  width: 238,
+                  child: Row(
+                    children: [
+                      _HeroStat(
+                        value: _heroValue(score, confidence, item.type),
+                        label: score != null ? 'SCORE' : 'STATUS',
+                      ),
+                      _HeroStat(
+                        value: _snapshotValue(metrics, 'Trace', fallback: '--'),
+                        label: 'TRACE',
+                      ),
+                      _HeroStat(
+                        value: item.status ?? 'READY',
+                        label: 'STATE',
+                        compact: true,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -408,6 +549,494 @@ class _HeroPerformanceCard extends StatelessWidget {
   }
 }
 
+class _TracerRecapButton extends StatelessWidget {
+  const _TracerRecapButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.45),
+        border: Border.all(color: const Color(0x26FFFFFF)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'VIEW RECAP',
+              style: AppTextStyles.micro.copyWith(
+                color: AppColors.textPrimary,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(width: 5),
+            const Icon(Icons.chevron_right, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroStat extends StatelessWidget {
+  const _HeroStat({
+    required this.value,
+    required this.label,
+    this.compact = false,
+  });
+
+  final String value;
+  final String label;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value.toUpperCase(),
+            style: AppTextStyles.micro.copyWith(
+              fontSize: compact ? 10 : 17,
+              color: AppColors.textPrimary,
+              letterSpacing: compact ? 0.5 : 0,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            style: AppTextStyles.micro.copyWith(
+              color: AppColors.textMuted,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LastGameVisualPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final gradient = LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [
+        Colors.black.withValues(alpha: 0.78),
+        const Color(0xFF0B1510).withValues(alpha: 0.62),
+        const Color(0xFF07100D).withValues(alpha: 0.12),
+      ],
+    );
+    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
+
+    final tracerPaint = Paint()
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6;
+    final path = Path()
+      ..moveTo(size.width * 0.50, size.height * 0.68)
+      ..cubicTo(
+        size.width * 0.65,
+        size.height * 0.26,
+        size.width * 0.82,
+        size.height * 0.18,
+        size.width * 0.94,
+        size.height * 0.36,
+      );
+    canvas.drawPath(path, tracerPaint);
+
+    final goldPaint = Paint()
+      ..color = AppColors.signalGold.withValues(alpha: 0.38)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1;
+    canvas.drawArc(
+      Rect.fromLTWH(
+        size.width * 0.56,
+        size.height * 0.20,
+        size.width * 0.34,
+        size.height * 0.48,
+      ),
+      -0.8,
+      2.8,
+      false,
+      goldPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LastGameVisualPainter oldDelegate) => false;
+}
+
+class _PerformanceHeroSection extends StatelessWidget {
+  const _PerformanceHeroSection({
+    required this.user,
+    required this.hero,
+    required this.section,
+    required this.focus,
+  });
+
+  final Map<String, dynamic> user;
+  final DashboardItem hero;
+  final DashboardSection section;
+  final DashboardItem focus;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = _homeGolferAsset(user);
+    final score = hero.metadata['score'];
+    final confidence = hero.metadata['confidence'];
+    final consistency = _heroValue(score, confidence, hero.type);
+    return Container(
+      key: const ValueKey('home-performance-hero'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF07090B),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'PERFORMANCE LAB',
+                  style: AppTextStyles.label.copyWith(
+                    color: const Color(0xFFF4F6F8),
+                  ),
+                ),
+              ),
+              if (focus.status != null) _StatusPill(label: focus.status!),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 382,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Positioned.fill(
+                  child: CustomPaint(painter: _PerformanceHaloPainter()),
+                ),
+                Positioned(
+                  top: 4,
+                  bottom: 26,
+                  left: 58,
+                  right: 58,
+                  child: Image.asset(
+                    asset,
+                    key: const ValueKey('home-center-golfer-asset'),
+                    fit: BoxFit.contain,
+                    alignment: Alignment.bottomCenter,
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  top: 38,
+                  width: 108,
+                  child: _MetricColumn(
+                    metrics: [
+                      _HomeVisualMetric(
+                        'SWING SCORE',
+                        _snapshotValue(
+                          section.metrics,
+                          'Swing',
+                          fallback: consistency,
+                        ),
+                        route: '/stats/swings',
+                      ),
+                      _HomeVisualMetric(
+                        'TRACE CONF.',
+                        _snapshotValue(
+                          section.metrics,
+                          'Trace',
+                          fallback: '--',
+                        ),
+                        route: '/stats/tracer',
+                      ),
+                      _HomeVisualMetric(
+                        'GIR',
+                        'NOT ENOUGH',
+                        caption: 'Rounds v2',
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  top: 38,
+                  width: 108,
+                  child: _MetricColumn(
+                    alignEnd: true,
+                    metrics: [
+                      const _HomeVisualMetric(
+                        'HANDICAP',
+                        'NOT ENOUGH',
+                        caption: 'No estimate',
+                      ),
+                      const _HomeVisualMetric(
+                        'BEST CLUB',
+                        'CLUB BAG',
+                        caption: 'Open stats',
+                        route: '/stats/clubs',
+                      ),
+                      _HomeVisualMetric(
+                        'FOCUS',
+                        focus.status ?? 'READY',
+                        caption: focus.title,
+                        route: focus.route,
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  bottom: 2,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => _openDashboardRoute(context, hero.route),
+                    child: Container(
+                      width: 188,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.62),
+                        border: Border.all(color: const Color(0x559FE870)),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'SWING CONSISTENCY',
+                            style: AppTextStyles.micro.copyWith(
+                              color: const Color(0xFF9FE870),
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            consistency,
+                            style: AppTextStyles.title.copyWith(fontSize: 28),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeVisualMetric {
+  const _HomeVisualMetric(this.label, this.value, {this.caption, this.route});
+
+  final String label;
+  final String value;
+  final String? caption;
+  final String? route;
+}
+
+class _MetricColumn extends StatelessWidget {
+  const _MetricColumn({required this.metrics, this.alignEnd = false});
+
+  final List<_HomeVisualMetric> metrics;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: alignEnd
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        for (final metric in metrics) ...[
+          _HomeMetricPod(metric: metric, alignEnd: alignEnd),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
+
+class _HomeMetricPod extends StatelessWidget {
+  const _HomeMetricPod({required this.metric, required this.alignEnd});
+
+  final _HomeVisualMetric metric;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: metric.route == null
+          ? null
+          : () => _openDashboardRoute(context, metric.route),
+      child: Container(
+        width: 108,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.46),
+          border: Border.all(color: const Color(0x1FFFFFFF)),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: alignEnd
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              metric.label,
+              style: AppTextStyles.micro.copyWith(
+                color: AppColors.textMuted,
+                letterSpacing: 0.8,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 5),
+            Text(
+              metric.value.toUpperCase(),
+              textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+              style: AppTextStyles.micro.copyWith(
+                fontSize: metric.value.length > 8 ? 10 : 18,
+                color: AppColors.textPrimary,
+                letterSpacing: 0,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (metric.caption != null) ...[
+              const SizedBox(height: 5),
+              Text(
+                metric.caption!,
+                textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+                style: AppTextStyles.micro.copyWith(
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 7),
+            _Sparkline(alignEnd: alignEnd),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Sparkline extends StatelessWidget {
+  const _Sparkline({required this.alignEnd});
+
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(76, 16),
+      painter: _SparklinePainter(alignEnd: alignEnd),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  const _SparklinePainter({required this.alignEnd});
+
+  final bool alignEnd;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.58)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final path = Path();
+    final points = alignEnd
+        ? const [0.54, 0.42, 0.62, 0.36, 0.45, 0.22]
+        : const [0.66, 0.48, 0.56, 0.30, 0.38, 0.18];
+    for (var i = 0; i < points.length; i++) {
+      final x = size.width * i / (points.length - 1);
+      final y = size.height * points[i];
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
+    return oldDelegate.alignEnd != alignEnd;
+  }
+}
+
+class _PerformanceHaloPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height * 0.54);
+    final ringRect = Rect.fromCenter(
+      center: center,
+      width: size.width * 0.72,
+      height: size.width * 0.72,
+    );
+    final haloPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..shader = const SweepGradient(
+        colors: [
+          Color(0x119FE870),
+          Color(0x44D8B24C),
+          Color(0x669FE870),
+          Color(0x119FE870),
+        ],
+      ).createShader(ringRect);
+    canvas.drawArc(ringRect, -2.9, 5.6, false, haloPaint);
+
+    final baseRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height * 0.84),
+      width: size.width * 0.56,
+      height: 56,
+    );
+    final basePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.72);
+    canvas.drawOval(baseRect, basePaint);
+    canvas.drawOval(
+      baseRect.inflate(14),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = AppColors.signalGold.withValues(alpha: 0.42),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PerformanceHaloPainter oldDelegate) => false;
+}
+
 class _QuickActionGrid extends StatelessWidget {
   const _QuickActionGrid({required this.actions});
 
@@ -416,25 +1045,19 @@ class _QuickActionGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visible = actions.isEmpty ? _fallbackActions() : actions;
+    final rowActions = visible.take(4).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text('QUICK ACTIONS', style: AppTextStyles.label),
         const SizedBox(height: 10),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: visible.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: 1.42,
-          ),
-          itemBuilder: (context, index) {
-            final action = visible[index];
-            return _QuickActionTile(action: action);
-          },
+        Row(
+          children: [
+            for (var index = 0; index < rowActions.length; index++) ...[
+              Expanded(child: _QuickActionTile(action: rowActions[index])),
+              if (index != rowActions.length - 1) const SizedBox(width: 10),
+            ],
+          ],
         ),
       ],
     );
@@ -450,29 +1073,46 @@ class _QuickActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       key: ValueKey('home-action-${action.id}'),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(18),
       onTap: action.enabled
           ? () => _openDashboardRoute(context, action.route)
           : null,
       child: Container(
-        padding: const EdgeInsets.all(14),
+        height: 118,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.panel,
-          border: Border.all(color: AppColors.border),
-          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFF0D1014),
+          border: Border.all(color: const Color(0x1FFFFFFF)),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(_actionIcon(action.id), size: 22),
+            Icon(
+              _actionIcon(action.id),
+              size: 22,
+              color: _actionAccent(action.id),
+            ),
             const Spacer(),
-            Text(action.title.toUpperCase(), style: AppTextStyles.label),
+            Text(
+              action.title.toUpperCase(),
+              style: AppTextStyles.micro.copyWith(
+                color: AppColors.textPrimary,
+                letterSpacing: 0.8,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
             if (action.subtitle != null) ...[
               const SizedBox(height: 6),
               Text(
                 action.subtitle!,
-                style: AppTextStyles.body,
-                maxLines: 1,
+                style: AppTextStyles.micro.copyWith(
+                  color: AppColors.textMuted,
+                  letterSpacing: 0,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -584,57 +1224,6 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
-class _FocusCard extends StatelessWidget {
-  const _FocusCard({required this.item});
-
-  final DashboardItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionPanel(
-      title: item.title.isEmpty ? "Today's Focus" : item.title,
-      actionLabel: 'OPEN',
-      onAction: () => _openDashboardRoute(context, item.route),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (item.status != null) _StatusPill(label: item.status!),
-          const SizedBox(height: 10),
-          Text(
-            item.body ?? 'Start with one clean guided capture.',
-            style: AppTextStyles.body,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _FavoritesPreview extends StatelessWidget {
-  const _FavoritesPreview({required this.items});
-
-  final List<DashboardItem> items;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SectionPanel(
-      title: 'Favorites',
-      actionLabel: 'VIEW ALL',
-      onAction: () => context.go('/favorites'),
-      child: items.isEmpty
-          ? const Text(
-              'Save swings, reports, tracers, or rounds to pin priority review items here.',
-              style: AppTextStyles.body,
-            )
-          : Column(
-              children: [
-                for (final item in items.take(3)) _ActivityRow(item: item),
-              ],
-            ),
-    );
-  }
-}
-
 class _RecentActivityList extends StatelessWidget {
   const _RecentActivityList({required this.items});
 
@@ -642,20 +1231,153 @@ class _RecentActivityList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SectionPanel(
-      title: 'Recent Activity',
-      actionLabel: 'VIEW ALL',
-      onAction: () => context.go('/activity'),
-      child: items.isEmpty
-          ? const Text(
-              'Your swing analyses, tracer reviews, and future round summaries will appear here.',
-              style: AppTextStyles.body,
-            )
-          : Column(
-              children: [
-                for (final item in items.take(5)) _ActivityRow(item: item),
+    if (items.isEmpty) {
+      return _SectionPanel(
+        title: 'Recent Activity',
+        actionLabel: 'VIEW ALL',
+        onAction: () => context.go('/activity'),
+        child: const Text(
+          'Your swing analyses, tracer reviews, and future round summaries will appear here.',
+          style: AppTextStyles.body,
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('RECENT ACTIVITY', style: AppTextStyles.label),
+            ),
+            TextButton(
+              onPressed: () => context.go('/activity'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Text('VIEW ALL'),
+                  SizedBox(width: 3),
+                  Icon(Icons.chevron_right, size: 16),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final item in items.take(4)) ...[
+                _RecentActivityCard(item: item),
+                const SizedBox(width: 12),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RecentActivityCard extends StatelessWidget {
+  const _RecentActivityCard({required this.item});
+
+  final DashboardItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: item.route == null
+          ? null
+          : () => _openDashboardRoute(context, item.route),
+      child: Container(
+        width: 146,
+        height: 172,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0x1FFFFFFF)),
+          image: DecorationImage(
+            image: AssetImage(_activityAsset(item)),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.12),
+                Colors.black.withValues(alpha: 0.36),
+                Colors.black.withValues(alpha: 0.88),
               ],
             ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ActivityBadge(label: _activityBadge(item)),
+                const Spacer(),
+                Text(
+                  item.title,
+                  style: AppTextStyles.micro.copyWith(
+                    fontSize: 12,
+                    color: AppColors.textPrimary,
+                    letterSpacing: 0.4,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (item.body != null) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    item.body!,
+                    style: AppTextStyles.micro.copyWith(
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityBadge extends StatelessWidget {
+  const _ActivityBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.54),
+        border: Border.all(color: const Color(0x339FE870)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        child: Text(
+          label,
+          style: AppTextStyles.micro.copyWith(
+            color: const Color(0xFF9FE870),
+            letterSpacing: 0.7,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -849,6 +1571,58 @@ List<DashboardAction> _fallbackActions() {
   ];
 }
 
+DashboardItem _lastGameItem(HomeDashboard dashboard) {
+  for (final item in dashboard.recentActivity) {
+    final type = item.type.toLowerCase();
+    if (type.contains('round')) return item;
+  }
+  return dashboard.hero;
+}
+
+String _snapshotValue(
+  List<DashboardMetric> metrics,
+  String labelPart, {
+  required String fallback,
+}) {
+  final needle = labelPart.toLowerCase();
+  for (final metric in metrics) {
+    if (metric.label.toLowerCase().contains(needle)) {
+      return metric.value;
+    }
+  }
+  return fallback;
+}
+
+String _homeGolferAsset(Map<String, dynamic> user) {
+  final skill = (user['skill_level'] as String? ?? '').toLowerCase();
+  if (skill.contains('junior') || skill.contains('beginner')) {
+    return _homeGolferJuniorAsset;
+  }
+  if (skill.contains('advanced') ||
+      skill.contains('elite') ||
+      skill.contains('pro')) {
+    return _homeGolferProAsset;
+  }
+  return _homeGolferAmateurAsset;
+}
+
+String _activityAsset(DashboardItem item) {
+  final type = item.type.toLowerCase();
+  if (type.contains('tracer')) return _homeGolferGoldAsset;
+  if (type.contains('favorite')) return _homeFallbackAvatarAsset;
+  if (type.contains('round')) return _homeGolferJuniorAsset;
+  return _homeGolferProAsset;
+}
+
+String _activityBadge(DashboardItem item) {
+  final type = item.type.toLowerCase();
+  if (type.contains('tracer')) return 'DR';
+  if (type.contains('round')) return '18H';
+  if (type.contains('favorite')) return 'PIN';
+  if (type.contains('swing')) return '7i';
+  return item.status?.toUpperCase().split(' ').first ?? 'LOG';
+}
+
 void _openDashboardRoute(BuildContext context, String? route) {
   if (route == null || route.isEmpty) return;
   if (!_isAllowedDashboardRoute(route)) {
@@ -925,6 +1699,16 @@ IconData _actionIcon(String id) {
   };
 }
 
+Color _actionAccent(String id) {
+  return switch (id) {
+    'record_swing' => const Color(0xFFF4F6F8),
+    'shot_tracer' => const Color(0xFF9FE870),
+    'play_round' => AppColors.signalGold,
+    'stats' => const Color(0xFFE6EEF5),
+    _ => AppColors.textSecondary,
+  };
+}
+
 String _firstName(String? email) {
   final local = email?.split('@').first ?? 'Golfer';
   return local.replaceAll('.', ' ').replaceAll('_', ' ').trim().isEmpty
@@ -939,7 +1723,7 @@ String _dashboardDisplayName(Map<String, dynamic> user) {
   if (compact.length > 24 || RegExp(r'\d').hasMatch(compact)) {
     return 'Golfer';
   }
-  return compact;
+  return compact.split(' ').first;
 }
 
 String _statsTitle(String kind) {

@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Asset-Backed Home Dashboard
+
+- Reworked `/home` around the uploaded `swinglens_home_exact_ui_orientation.md` direction: brand row, notification/avatar controls, greeting, honest weather-off pill, priority row, Last Game recap, central Performance Lab, quick actions, and recent activity.
+- Copied the uploaded golfer/avatar PNGs into `assets/home/` and registered them in `pubspec.yaml`; Home now uses the behind-the-back golfer asset as the central performance visual and asset-backed activity cards.
+- Kept metrics honest: weather remains disabled until an API exists, unsupported handicap/GIR style fields stay `NOT ENOUGH`, and tracer values remain visual-only/confidence-oriented.
+- Updated Home/widget expectations and live dashboard smoke markers for the new Home hierarchy.
+- Validated with `flutter analyze`, full `flutter test` (`77 passed`), live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator, demo reseed, and simulator screenshot review.
+
 ## 2026-06-13 Bottom Navigation Visual Polish
 
 - Updated the persistent bottom navigation to a lighter translucent dark surface with a soft selected capsule, thin top border, and higher-contrast icon/label colors.

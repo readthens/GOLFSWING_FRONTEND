@@ -35,7 +35,7 @@ void main() {
 
       await _waitForText(
         tester,
-        'COMMAND CENTER',
+        'PERFORMANCE LAB',
         timeout: const Duration(seconds: 20),
       );
 
@@ -60,7 +60,7 @@ void main() {
       await _waitForText(tester, 'STATS OVERVIEW');
 
       await tester.tap(find.text('Home'));
-      await _waitForText(tester, 'COMMAND CENTER');
+      await _waitForText(tester, 'PERFORMANCE LAB');
 
       await tester.tap(find.text('Tracer'));
       await _waitForText(tester, 'SHOT TRACER');
@@ -93,10 +93,10 @@ void main() {
 Future<void> _openHomeRoot(WidgetTester tester) async {
   await tester.tap(find.text('Home'));
   await tester.pumpAndSettle();
-  if (find.text('COMMAND CENTER').evaluate().isEmpty) {
+  if (find.text('PERFORMANCE LAB').evaluate().isEmpty) {
     await tester.tap(find.text('Home'));
   }
-  await _waitForText(tester, 'COMMAND CENTER');
+  await _waitForText(tester, 'PERFORMANCE LAB');
 }
 
 Future<void> _waitForText(

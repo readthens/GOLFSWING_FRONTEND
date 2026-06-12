@@ -2512,8 +2512,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('COMMAND CENTER'), findsOneWidget);
-    expect(find.text('LATEST SWING'), findsOneWidget);
+    expect(find.text('Good morning, Local.'), findsOneWidget);
+    expect(find.text('LAST GAME'), findsOneWidget);
+    expect(find.text('PERFORMANCE LAB'), findsOneWidget);
+    expect(find.byKey(const ValueKey('home-weather-pill')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('home-center-golfer-asset')),
+      findsOneWidget,
+    );
     expect(find.text('82'), findsWidgets);
     expect(
       find.byKey(const ValueKey('home-action-record_swing')),
@@ -2536,7 +2542,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('home-action-record_swing')));
+    final recordAction = find.byKey(const ValueKey('home-action-record_swing'));
+    await tester.ensureVisible(recordAction);
+    await tester.pumpAndSettle();
+    await tester.tap(recordAction);
     await tester.pumpAndSettle();
 
     expect(find.text('GUIDED CAPTURE'), findsOneWidget);
