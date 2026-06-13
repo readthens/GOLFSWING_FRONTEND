@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Full-Screen Shot Tracer Camera
+
+- Added a dedicated full-screen `/tracer/camera` route and changed `/tracer/new` to enter that camera-style recorder instead of the form-heavy tracer upload screen.
+- Updated the Shot Tracer intro `START TRACER CAMERA` CTA to open the full-screen camera surface; `IMPORT VIDEO` remains on the intro and continues to use `/capture/tracer`.
+- Built the camera surface with rear-camera preview when available, simulator-safe image fallback, immersive system UI, timer/status HUD, guide overlay, impact-lock/tracer arc states, high-FPS readiness indicators, and a SmoothSwing-style bottom record deck.
+- Added widget coverage proving the camera route hides the app bottom nav/import button, enters waiting-for-impact state, and transitions to impact detected.
+- Validated with focused tracer tests, `flutter analyze`, full `flutter test` (`79 passed`), `git diff --check`, and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-13 Shot Tracer Camera-First Intro
 
 - Rebuilt the `/tracer` tab landing page into a camera-first Shot Tracer starter screen using the uploaded `shot_tracer.png` asset copied into `assets/home/`.

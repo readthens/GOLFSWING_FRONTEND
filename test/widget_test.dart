@@ -2656,6 +2656,43 @@ void main() {
     expect(find.textContaining('QUALITY PASS'), findsNothing);
   });
 
+  testWidgets('shot tracer start opens full screen camera recorder', (
+    WidgetTester tester,
+  ) async {
+    await pumpSwingLensApp(
+      tester,
+      auth: ReadyTestAuthController(),
+      apiClient: DashboardApiClient(includeTracerSessions: true),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Tracer'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('START TRACER CAMERA'));
+    await tester.tap(find.text('START TRACER CAMERA'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(
+      find.byKey(const ValueKey('tracer-camera-record-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tracer-camera-guide-overlay')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('bottom-nav-bar')), findsNothing);
+    expect(find.text('IMPORT VIDEO'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('tracer-camera-record-button')));
+    await tester.pump(const Duration(milliseconds: 150));
+
+    expect(find.text('WAITING FOR BALL IMPACT'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('IMPACT DETECTED'), findsOneWidget);
+  });
+
   testWidgets('rounds tab renders saved scorecards and opens detail', (
     WidgetTester tester,
   ) async {

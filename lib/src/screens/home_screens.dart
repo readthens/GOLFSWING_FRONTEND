@@ -3425,7 +3425,7 @@ class TracerHubScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 22),
               _ShotTracerHero(
-                onStart: () => context.go('/tracer/new'),
+                onStart: () => context.go('/tracer/camera'),
                 onImport: () => context.go('/capture/tracer'),
               ),
               const SizedBox(height: 26),
@@ -3964,7 +3964,9 @@ class _RecentTracerSection extends StatelessWidget {
                   .take(8)
                   .toList();
               if (sessions.isEmpty) {
-                return _NoTracerState(onStart: () => context.go('/tracer/new'));
+                return _NoTracerState(
+                  onStart: () => context.go('/tracer/camera'),
+                );
               }
               return SizedBox(
                 height: 202,
