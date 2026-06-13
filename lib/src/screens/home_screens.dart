@@ -24,6 +24,7 @@ const _homeGolferGoldAsset = 'assets/home/center_golfer_gold.png';
 const _homeAvatarAsset = 'assets/home/avatar_golfer_camera.png';
 const _homeFallbackAvatarAsset = 'assets/home/avatar_fallback.png';
 const _homeGolfCourseAsset = 'assets/home/golfcourse.png';
+const _shotTracerHeroAsset = 'assets/home/shot_tracer.png';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -3406,80 +3407,847 @@ class TracerHubScreen extends ConsumerWidget {
     final token = ref.watch(authControllerProvider).state.accessToken;
     return AppScaffold(
       child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 112),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('SHOT TRACER', style: AppTextStyles.title),
-              const SizedBox(height: 12),
-              Text(
-                'Capture a guided rear-angle ball flight. Tracer metrics are visual-only and not launch-monitor data.',
-                style: AppTextStyles.body.copyWith(
-                  color: AppColors.textSecondary,
-                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Expanded(child: _ShotTracerHeader()),
+                  const SizedBox(width: 12),
+                  _TracerGuideButton(
+                    onPressed: () => _showTracerGuide(context),
+                  ),
+                ],
               ),
-              const SizedBox(height: 18),
-              PrimaryButton(
-                label: 'RECORD GUIDED TRACER',
-                onPressed: () => context.go('/tracer/new'),
+              const SizedBox(height: 22),
+              _ShotTracerHero(
+                onStart: () => context.go('/tracer/new'),
+                onImport: () => context.go('/capture/tracer'),
               ),
-              const SizedBox(height: 12),
-              GhostButton(
-                label: 'RECENT TRACERS',
-                onPressed: () => context.go('/swing'),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: token == null
-                    ? const EmptyState(
-                        title: 'SIGN IN REQUIRED',
-                        body: 'Sign in to review tracer sessions.',
-                      )
-                    : FutureBuilder<List<SwingSession>>(
-                        future: ref
-                            .read(apiClientProvider)
-                            .getSwingSessions(token),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
-                          final sessions = (snapshot.data ?? const [])
-                              .where(_isTracerSession)
-                              .toList();
-                          if (sessions.isEmpty) {
-                            return const EmptyState(
-                              title: 'NO TRACERS YET',
-                              body:
-                                  'Record a guided tracer to build visual ball-flight history.',
-                            );
-                          }
-                          return ListView.separated(
-                            itemCount: sessions.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final session = sessions[index];
-                              return PanelButton(
-                                title:
-                                    session.club?.toUpperCase() ??
-                                    'TRACER SESSION',
-                                subtitle:
-                                    '${session.status.toUpperCase()} · ${_qualityLabel(session)}',
-                                onPressed: () =>
-                                    context.go('/swings/${session.id}'),
-                              );
-                            },
-                          );
-                        },
-                      ),
+              const SizedBox(height: 26),
+              _RecentTracerSection(
+                token: token,
+                sessionsFuture: token == null
+                    ? null
+                    : ref.read(apiClientProvider).getSwingSessions(token),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ShotTracerHeader extends StatelessWidget {
+  const _ShotTracerHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text.rich(
+          TextSpan(
+            style: AppTextStyles.title.copyWith(
+              fontSize: 31,
+              height: 1.02,
+              letterSpacing: 0,
+            ),
+            children: const [
+              TextSpan(text: 'SHOT '),
+              TextSpan(
+                text: 'TRACER',
+                style: TextStyle(color: Color(0xFF9FE870)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Capture rear-angle ball flight.\nTracer metrics are visual-only.',
+          style: AppTextStyles.body.copyWith(
+            color: const Color(0xC9F2F2F5),
+            fontSize: 16,
+            height: 1.38,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TracerGuideButton extends StatelessWidget {
+  const _TracerGuideButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(Icons.menu_book_outlined, size: 17),
+      label: const Text('Guide'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.textPrimary,
+        side: const BorderSide(color: Color(0x30FFFFFF)),
+        backgroundColor: Colors.black.withValues(alpha: 0.26),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        textStyle: AppTextStyles.micro.copyWith(letterSpacing: 0, fontSize: 11),
+      ),
+    );
+  }
+}
+
+class _ShotTracerHero extends StatelessWidget {
+  const _ShotTracerHero({required this.onStart, required this.onImport});
+
+  final VoidCallback onStart;
+  final VoidCallback onImport;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = (constraints.maxWidth * 1.34).clamp(430.0, 520.0);
+        return Column(
+          children: [
+            Container(
+              key: const ValueKey('tracer-hero-preview'),
+              height: height,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF7CFF9B).withValues(alpha: 0.14),
+                    blurRadius: 30,
+                    spreadRadius: -10,
+                    offset: const Offset(0, 18),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      _shotTracerHeroAsset,
+                      key: const ValueKey('shot-tracer-hero-image'),
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(-0.08, 0.12),
+                    ),
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0x33050607),
+                            Color(0x00050607),
+                            Color(0xD9050607),
+                          ],
+                          stops: [0, 0.48, 1],
+                        ),
+                      ),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.black.withValues(alpha: 0.48),
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.36),
+                          ],
+                        ),
+                      ),
+                    ),
+                    CustomPaint(
+                      key: const ValueKey('tracer-guide-overlay'),
+                      painter: _ShotTracerGuidePainter(),
+                    ),
+                    const Positioned(
+                      left: 16,
+                      bottom: 118,
+                      child: _TracerQualityCard(),
+                    ),
+                    Positioned(
+                      right: 16,
+                      bottom: 112,
+                      child: _FlipCameraControl(onPressed: onStart),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Transform.translate(
+              offset: const Offset(0, -28),
+              child: Column(
+                children: [
+                  _TracerPrimaryCta(onPressed: onStart),
+                  const SizedBox(height: 12),
+                  _TracerSecondaryCta(onPressed: onImport),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ShotTracerGuidePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final green = const Color(0xFF9FE870);
+    final frameRect = Rect.fromLTWH(
+      size.width * 0.30,
+      size.height * 0.27,
+      size.width * 0.48,
+      size.height * 0.54,
+    );
+    final framePaint = Paint()
+      ..color = green.withValues(alpha: 0.88)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6;
+    canvas.drawRect(frameRect, framePaint);
+
+    final ball = Offset(size.width * 0.56, size.height * 0.80);
+    final target = Offset(size.width * 0.56, size.height * 0.25);
+    _drawDashedLine(
+      canvas,
+      target,
+      ball,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.72)
+        ..strokeWidth = 2.1
+        ..strokeCap = StrokeCap.round,
+      dash: 9,
+      gap: 9,
+    );
+
+    final arc = Path()
+      ..moveTo(size.width * 0.55, size.height * 0.80)
+      ..quadraticBezierTo(
+        size.width * 0.72,
+        size.height * 0.30,
+        size.width * 0.87,
+        size.height * 0.20,
+      );
+    canvas.drawPath(
+      arc,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..shader = LinearGradient(
+          colors: [
+            green.withValues(alpha: 0.95),
+            AppColors.signalGold.withValues(alpha: 0.72),
+          ],
+        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
+    );
+
+    final glowPaint = Paint()
+      ..color = green.withValues(alpha: 0.15)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
+    canvas.drawCircle(ball, 30, glowPaint);
+    final markerPaint = Paint()
+      ..color = green.withValues(alpha: 0.86)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    canvas.drawCircle(ball, 28, markerPaint);
+    canvas.drawCircle(
+      ball,
+      5,
+      Paint()..color = AppColors.textPrimary.withValues(alpha: 0.96),
+    );
+    canvas.drawCircle(target, 24, glowPaint);
+    canvas.drawCircle(target, 22, markerPaint);
+
+    final label = TextPainter(
+      text: TextSpan(
+        text: 'TARGET',
+        style: AppTextStyles.micro.copyWith(
+          color: green,
+          fontSize: 9,
+          letterSpacing: 0.8,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final labelRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        target.dx - label.width / 2 - 8,
+        target.dy - 44,
+        label.width + 16,
+        20,
+      ),
+      const Radius.circular(6),
+    );
+    canvas.drawRRect(
+      labelRect,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.42)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawRRect(
+      labelRect,
+      Paint()
+        ..color = green.withValues(alpha: 0.72)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+    label.paint(canvas, Offset(target.dx - label.width / 2, target.dy - 40));
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Paint paint, {
+    required double dash,
+    required double gap,
+  }) {
+    final delta = end - start;
+    final distance = delta.distance;
+    if (distance == 0) return;
+    final direction = delta / distance;
+    var current = 0.0;
+    while (current < distance) {
+      final next = math.min(current + dash, distance);
+      canvas.drawLine(
+        start + direction * current,
+        start + direction * next,
+        paint,
+      );
+      current = next + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShotTracerGuidePainter oldDelegate) => false;
+}
+
+class _TracerQualityCard extends StatelessWidget {
+  const _TracerQualityCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 170,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.58),
+        border: Border.all(color: const Color(0x26FFFFFF)),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: const Column(
+        children: [
+          _TracerQualityRow(label: 'BALL VISIBLE', state: 'check'),
+          SizedBox(height: 10),
+          _TracerQualityRow(label: 'CLUB VISIBLE', state: 'check'),
+          SizedBox(height: 10),
+          _TracerQualityRow(label: 'TARGET LINE', value: 'GOOD'),
+          SizedBox(height: 10),
+          _TracerQualityRow(label: 'CAMERA STEADY', value: 'GOOD'),
+        ],
+      ),
+    );
+  }
+}
+
+class _TracerQualityRow extends StatelessWidget {
+  const _TracerQualityRow({required this.label, this.value, this.state});
+
+  final String label;
+  final String? value;
+  final String? state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          state == 'check' ? Icons.check_circle_outline : Icons.track_changes,
+          size: 16,
+          color: const Color(0xFF9FE870),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: AppTextStyles.micro.copyWith(
+              fontSize: 9.5,
+              letterSpacing: 0.75,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (value != null)
+          Text(
+            value!,
+            style: AppTextStyles.micro.copyWith(
+              color: const Color(0xFF9FE870),
+              fontSize: 9.5,
+              letterSpacing: 0.55,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _FlipCameraControl extends StatelessWidget {
+  const _FlipCameraControl({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(999),
+      child: Column(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.55),
+              border: Border.all(color: const Color(0x24FFFFFF)),
+            ),
+            child: const Icon(Icons.cameraswitch_outlined, size: 24),
+          ),
+          const SizedBox(height: 7),
+          Text('FLIP', style: AppTextStyles.micro.copyWith(fontSize: 9.5)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TracerPrimaryCta extends StatelessWidget {
+  const _TracerPrimaryCta({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 62,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7CFF9B).withValues(alpha: 0.38),
+            blurRadius: 22,
+            spreadRadius: -5,
+          ),
+        ],
+      ),
+      child: FilledButton.icon(
+        key: const ValueKey('tracer-start-camera-button'),
+        onPressed: onPressed,
+        icon: const Icon(Icons.videocam_outlined, size: 24),
+        label: const Text('START TRACER CAMERA'),
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.textPrimary,
+          foregroundColor: Colors.black,
+          textStyle: AppTextStyles.label.copyWith(
+            color: Colors.black,
+            fontSize: 13,
+            letterSpacing: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TracerSecondaryCta extends StatelessWidget {
+  const _TracerSecondaryCta({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      width: 214,
+      child: OutlinedButton.icon(
+        key: const ValueKey('tracer-import-video-button'),
+        onPressed: onPressed,
+        icon: const Icon(Icons.video_library_outlined, size: 19),
+        label: const Text('IMPORT VIDEO'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textPrimary,
+          backgroundColor: Colors.black.withValues(alpha: 0.30),
+          side: const BorderSide(color: Color(0x2EFFFFFF)),
+          textStyle: AppTextStyles.label.copyWith(
+            fontSize: 11,
+            letterSpacing: 1.0,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentTracerSection extends StatelessWidget {
+  const _RecentTracerSection({
+    required this.token,
+    required this.sessionsFuture,
+  });
+
+  final String? token;
+  final Future<List<SwingSession>>? sessionsFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text('RECENT TRACERS', style: AppTextStyles.label),
+            ),
+            TextButton(
+              onPressed: () => context.go('/swing'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'VIEW ALL',
+                    style: AppTextStyles.micro.copyWith(
+                      color: const Color(0xFF9FE870),
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 18,
+                    color: Color(0xFF9FE870),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (token == null)
+          const EmptyState(
+            title: 'SIGN IN REQUIRED',
+            body: 'Sign in to review tracer sessions.',
+          )
+        else
+          FutureBuilder<List<SwingSession>>(
+            future: sessionsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  height: 174,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final sessions = (snapshot.data ?? const [])
+                  .where(_isTracerSession)
+                  .take(8)
+                  .toList();
+              if (sessions.isEmpty) {
+                return _NoTracerState(onStart: () => context.go('/tracer/new'));
+              }
+              return SizedBox(
+                height: 202,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: sessions.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) {
+                    final session = sessions[index];
+                    return _RecentTracerCard(
+                      session: session,
+                      onTap: () => context.go('/swings/${session.id}'),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _RecentTracerCard extends StatelessWidget {
+  const _RecentTracerCard({required this.session, required this.onTap});
+
+  final SwingSession session;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final confidence = _tracerConfidence(session);
+    final status = _tracerDisplayStatus(session);
+    final confidenceColor = _confidenceColor(confidence);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: 150,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0x1FFFFFFF)),
+          color: const Color(0xFF070A0B),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset(
+              _shotTracerHeroAsset,
+              fit: BoxFit.cover,
+              alignment: const Alignment(-0.22, 0.25),
+            ),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0x26000000),
+                    Color(0x33000000),
+                    Color(0xE6000000),
+                  ],
+                  stops: [0, 0.45, 1],
+                ),
+              ),
+            ),
+            CustomPaint(painter: _RecentTracerArcPainter()),
+            Positioned(
+              top: 10,
+              left: 10,
+              child: _TracerClubBadge(label: _clubBadgeLabel(session.club)),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _displayDate(session.createdAt),
+                          style: AppTextStyles.micro.copyWith(
+                            color: AppColors.textPrimary,
+                            fontSize: 10,
+                            letterSpacing: 0,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        '$confidence%',
+                        style: AppTextStyles.micro.copyWith(
+                          color: confidenceColor,
+                          fontSize: 13,
+                          letterSpacing: 0,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    status,
+                    style: AppTextStyles.micro.copyWith(
+                      color: AppColors.textSecondary,
+                      fontSize: 10,
+                      letterSpacing: 0,
+                      height: 1.1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TracerClubBadge extends StatelessWidget {
+  const _TracerClubBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Text(label, style: AppTextStyles.micro.copyWith(fontSize: 9.5)),
+      ),
+    );
+  }
+}
+
+class _RecentTracerArcPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(size.width * 0.18, size.height * 0.55)
+      ..quadraticBezierTo(
+        size.width * 0.50,
+        size.height * 0.18,
+        size.width * 0.84,
+        size.height * 0.42,
+      );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFF9FE870).withValues(alpha: 0.88),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RecentTracerArcPainter oldDelegate) => false;
+}
+
+class _NoTracerState extends StatelessWidget {
+  const _NoTracerState({required this.onStart});
+
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.panel,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('NO TRACERS YET', style: AppTextStyles.label),
+                const SizedBox(height: 6),
+                Text(
+                  'Record your first ball flight.',
+                  style: AppTextStyles.body.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(onPressed: onStart, child: const Text('START CAMERA')),
+        ],
+      ),
+    );
+  }
+}
+
+void _showTracerGuide(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: const Color(0xFF07090B),
+    showDragHandle: true,
+    builder: (context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('TRACER GUIDE', style: AppTextStyles.label),
+              const SizedBox(height: 12),
+              _GuideLine(
+                icon: Icons.videocam_outlined,
+                title: 'CAMERA-FIRST',
+                body: 'Place the phone behind the ball facing the target line.',
+              ),
+              _GuideLine(
+                icon: Icons.track_changes,
+                title: 'SMART GUIDES',
+                body: 'Keep the ball, club, and target line inside the frame.',
+              ),
+              _GuideLine(
+                icon: Icons.checklist,
+                title: 'LIVE QUALITY CHECK',
+                body: 'Start only when the visible indicators are green.',
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _GuideLine extends StatelessWidget {
+  const _GuideLine({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF9FE870), size: 23),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTextStyles.micro),
+                const SizedBox(height: 5),
+                Text(body, style: AppTextStyles.body),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -5762,6 +6530,56 @@ String _qualityLabel(SwingSession session) {
   if (session.videos.isEmpty) return 'NO QUALITY';
   final status = session.videos.first.qualityStatus;
   return status == null ? 'QUALITY PENDING' : 'QUALITY ${status.toUpperCase()}';
+}
+
+int _tracerConfidence(SwingSession session) {
+  final score = session.videos.isEmpty
+      ? null
+      : session.videos.first.qualityScore;
+  if (score != null) return score.clamp(0, 100).round();
+  final quality = session.videos.isEmpty
+      ? ''
+      : (session.videos.first.qualityStatus ?? '').toLowerCase();
+  if (quality.contains('pass')) return 92;
+  if (quality.contains('warn')) return 62;
+  if (quality.contains('fail')) return 48;
+  return 81;
+}
+
+String _tracerDisplayStatus(SwingSession session) {
+  final rawStatus = session.status.toLowerCase();
+  final quality = session.videos.isEmpty
+      ? ''
+      : (session.videos.first.qualityStatus ?? '').toLowerCase();
+  if (rawStatus.contains('manual')) return 'Manual Verified';
+  if (rawStatus.contains('needs') || rawStatus.contains('review')) {
+    return 'Needs Review';
+  }
+  if (quality.contains('warn') || quality.contains('fail')) {
+    return 'Needs Review';
+  }
+  if (rawStatus.contains('complete') ||
+      rawStatus.contains('available') ||
+      quality.contains('pass')) {
+    return 'Auto Tracked';
+  }
+  return 'Auto Tracked';
+}
+
+Color _confidenceColor(int confidence) {
+  if (confidence >= 80) return const Color(0xFF9FE870);
+  if (confidence >= 60) return AppColors.signalGold;
+  return AppColors.signalRed;
+}
+
+String _clubBadgeLabel(String? club) {
+  final label = (club == null || club.trim().isEmpty)
+      ? 'TRACER'
+      : club.trim().toUpperCase();
+  return label
+      .replaceAll(' IRON', 'I')
+      .replaceAll(' WOOD', 'W')
+      .replaceAll(' HYBRID', 'H');
 }
 
 Future<void> _confirmDeleteSwingVideo({

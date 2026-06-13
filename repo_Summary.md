@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Shot Tracer Camera-First Intro
+
+- Rebuilt the `/tracer` tab landing page into a camera-first Shot Tracer starter screen using the uploaded `shot_tracer.png` asset copied into `assets/home/`.
+- Added a large live-preview hero with green framing box, dashed target line, ball anchor, target marker, flight arc, quality checklist, flip control, and white `START TRACER CAMERA` / ghost `IMPORT VIDEO` CTAs wired to the existing tracer capture route.
+- Replaced backend-looking recent tracer rows with horizontal visual thumbnail cards using polished statuses such as `Auto Tracked` and `Needs Review`, confidence coloring, club badges, and routes back to existing swing/tracer detail surfaces.
+- Added widget coverage for the camera-first intro, hero image, overlay, CTAs, visual recent cards, and removal of debug status copy.
+- Validated with focused tracer/bottom-nav widget tests, `flutter analyze`, full `flutter test` (`78 passed`), `git diff --check`, and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-13 Home Performance Hero And Quick Actions Polish
 
 - Removed the bordered `SWING CONSISTENCY` pill from the Home Performance Lab and replaced it with a text-only metric stack under the golfer image.

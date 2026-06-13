@@ -583,6 +583,7 @@ class DashboardApiClient extends ApiClient {
     this.emptyActivity = false,
     this.failRoundHoleWrites = false,
     this.homeTrendDelta,
+    this.includeTracerSessions = false,
   }) : super(baseUrl: 'http://localhost:8000');
 
   final bool emptyStats;
@@ -594,6 +595,7 @@ class DashboardApiClient extends ApiClient {
   final bool emptyActivity;
   final bool failRoundHoleWrites;
   final Object? homeTrendDelta;
+  final bool includeTracerSessions;
   int homeDashboardCalls = 0;
   int performanceSnapshotCalls = 0;
   int faultStatsCalls = 0;
@@ -845,6 +847,48 @@ class DashboardApiClient extends ApiClient {
         'created_at': '2026-06-06T00:00:00Z',
         'videos': const [],
       }),
+      if (includeTracerSessions)
+        SwingSession.fromJson({
+          'id': 'tracer-session-1',
+          'status': 'tracer_complete',
+          'club': 'Driver',
+          'session_type': 'tracer',
+          'location_type': 'range',
+          'created_at': '2026-06-06T00:00:00Z',
+          'videos': const [
+            {
+              'id': 'tracer-video-1',
+              'upload_id': 'tracer-upload-1',
+              'storage_key': 'users/local/uploads/tracer-upload-1/tracer.mp4',
+              'angle': 'rear_tracer',
+              'duration_ms': 5200,
+              'quality_score': 92,
+              'quality_status': 'pass',
+              'quality_checks': [],
+            },
+          ],
+        }),
+      if (includeTracerSessions)
+        SwingSession.fromJson({
+          'id': 'tracer-session-2',
+          'status': 'needs_review',
+          'club': '7 iron',
+          'session_type': 'tracer',
+          'location_type': 'range',
+          'created_at': '2026-06-05T00:00:00Z',
+          'videos': const [
+            {
+              'id': 'tracer-video-2',
+              'upload_id': 'tracer-upload-2',
+              'storage_key': 'users/local/uploads/tracer-upload-2/tracer.mp4',
+              'angle': 'rear_tracer',
+              'duration_ms': 4800,
+              'quality_score': 62,
+              'quality_status': 'warn',
+              'quality_checks': [],
+            },
+          ],
+        }),
     ];
   }
 
@@ -2578,6 +2622,40 @@ void main() {
     expect(find.text('GUIDED CAPTURE'), findsOneWidget);
   });
 
+  testWidgets('shot tracer hub renders camera-first intro and visual recents', (
+    WidgetTester tester,
+  ) async {
+    await pumpStandalone(
+      tester,
+      child: const TracerHubScreen(),
+      auth: ReadyTestAuthController(),
+      apiClient: DashboardApiClient(includeTracerSessions: true),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('SHOT TRACER'), findsOneWidget);
+    expect(
+      find.text(
+        'Capture rear-angle ball flight.\nTracer metrics are visual-only.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('shot-tracer-hero-image')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('tracer-guide-overlay')), findsOneWidget);
+    expect(find.text('START TRACER CAMERA'), findsOneWidget);
+    expect(find.text('IMPORT VIDEO'), findsOneWidget);
+    expect(find.text('RECENT TRACERS'), findsOneWidget);
+    expect(find.text('Auto Tracked'), findsOneWidget);
+    expect(find.text('Needs Review'), findsOneWidget);
+    expect(find.text('92%'), findsOneWidget);
+    expect(find.text('62%'), findsOneWidget);
+    expect(find.textContaining('TRACER_COMPLETE'), findsNothing);
+    expect(find.textContaining('QUALITY PASS'), findsNothing);
+  });
+
   testWidgets('rounds tab renders saved scorecards and opens detail', (
     WidgetTester tester,
   ) async {
@@ -3227,7 +3305,11 @@ void main() {
     await tester.tap(find.text('Tracer'));
     await tester.pumpAndSettle();
     expect(find.text('SHOT TRACER'), findsOneWidget);
-    expect(find.text('RECORD GUIDED TRACER'), findsOneWidget);
+    expect(find.text('START TRACER CAMERA'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('shot-tracer-hero-image')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
