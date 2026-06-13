@@ -23,6 +23,7 @@ const _homeGolferJuniorAsset = 'assets/home/center_golfer_junior.png';
 const _homeGolferGoldAsset = 'assets/home/center_golfer_gold.png';
 const _homeAvatarAsset = 'assets/home/avatar_golfer_camera.png';
 const _homeFallbackAvatarAsset = 'assets/home/avatar_fallback.png';
+const _homeGolfCourseAsset = 'assets/home/golfcourse.png';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -144,10 +145,7 @@ class _HomeDashboardView extends StatelessWidget {
               _PriorityRow(item: dashboard.priorityItem),
               const SizedBox(height: 18),
             ],
-            _LastGameHeroCard(
-              item: _lastGameItem(dashboard),
-              metrics: dashboard.performanceSnapshot.metrics,
-            ),
+            _LastGameHeroCard(item: _lastGameItem(dashboard)),
             const SizedBox(height: 24),
             _PerformanceHeroSection(
               user: dashboard.user,
@@ -455,14 +453,14 @@ class _DashboardNotice extends StatelessWidget {
 }
 
 class _LastGameHeroCard extends StatelessWidget {
-  const _LastGameHeroCard({required this.item, required this.metrics});
+  const _LastGameHeroCard({required this.item});
 
   final DashboardItem item;
-  final List<DashboardMetric> metrics;
 
   @override
   Widget build(BuildContext context) {
-    final stats = _lastGameStats(item, metrics);
+    final stats = _lastGameStats(item);
+    final title = _lastGameTitle(item);
     return InkWell(
       key: const ValueKey('home-hero-card'),
       borderRadius: BorderRadius.circular(22),
@@ -481,59 +479,22 @@ class _LastGameHeroCard extends StatelessWidget {
             Positioned.fill(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
-                child: CustomPaint(painter: _LastGameVisualPainter()),
+                child: _LastGameBackground(item: item),
               ),
             ),
-            Positioned(
-              right: -26,
-              top: -34,
-              bottom: -34,
-              width: 216,
-              child: Opacity(
-                opacity: 0.28,
-                child: Image.asset(_activityAsset(item), fit: BoxFit.cover),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.18),
-                      Colors.black.withValues(alpha: 0.06),
-                      Colors.black.withValues(alpha: 0.54),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const Positioned(right: 14, top: 14, child: _TracerRecapButton()),
-            Positioned(
-              right: -26,
-              bottom: -42,
-              child: Icon(
-                item.type.contains('tracer')
-                    ? Icons.track_changes
-                    : Icons.sports_golf,
-                size: 154,
-                color: Colors.white.withValues(alpha: 0.035),
-              ),
-            ),
+            const Positioned(right: 14, top: 46, child: _TracerRecapButton()),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _lastGameLabel(item),
+                  _lastGameLabel(),
                   style: AppTextStyles.label.copyWith(
                     color: const Color(0xFF9FE870),
                   ),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  item.title.isEmpty ? 'Latest Session' : item.title,
+                  title,
                   style: AppTextStyles.title.copyWith(fontSize: 21),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -547,16 +508,16 @@ class _LastGameHeroCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 SizedBox(
-                  width: 238,
+                  width: 276,
                   child: Row(
                     children: [
-                      _HeroStat(value: stats[0].value, label: stats[0].label),
-                      _HeroStat(value: stats[1].value, label: stats[1].label),
                       _HeroStat(
-                        value: stats[2].value,
-                        label: stats[2].label,
-                        compact: true,
+                        value: stats[0].value,
+                        label: stats[0].label,
+                        valueColor: _scoreAccent(stats[0].value),
                       ),
+                      _HeroStat(value: stats[1].value, label: stats[1].label),
+                      _HeroStat(value: stats[2].value, label: stats[2].label),
                     ],
                   ),
                 ),
@@ -565,6 +526,96 @@ class _LastGameHeroCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LastGameBackground extends StatelessWidget {
+  const _LastGameBackground({required this.item});
+
+  final DashboardItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = _lastGameImageUrl(item);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            const DecoratedBox(
+              decoration: BoxDecoration(color: Color(0xFF080A0D)),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: constraints.maxWidth * 0.68,
+              child: _CourseImage(url: imageUrl),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    const Color(0xFF050607).withValues(alpha: 0.96),
+                    const Color(0xFF050607).withValues(alpha: 0.78),
+                    const Color(0xFF050607).withValues(alpha: 0.18),
+                  ],
+                  stops: const [0, 0.48, 1],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.32),
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.50),
+                  ],
+                ),
+              ),
+            ),
+            CustomPaint(painter: _LastGameVisualPainter()),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CourseImage extends StatelessWidget {
+  const _CourseImage({required this.url});
+
+  final String? url;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = this.url;
+    if (url != null && url.isNotEmpty) {
+      if (url.startsWith('assets/')) {
+        return Image.asset(url, fit: BoxFit.cover, alignment: Alignment.center);
+      }
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        errorBuilder: (context, error, stackTrace) => _fallbackCourseImage(),
+      );
+    }
+    return _fallbackCourseImage();
+  }
+
+  Widget _fallbackCourseImage() {
+    return Image.asset(
+      _homeGolfCourseAsset,
+      key: const ValueKey('home-last-game-course-image'),
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
     );
   }
 }
@@ -602,15 +653,11 @@ class _TracerRecapButton extends StatelessWidget {
 }
 
 class _HeroStat extends StatelessWidget {
-  const _HeroStat({
-    required this.value,
-    required this.label,
-    this.compact = false,
-  });
+  const _HeroStat({required this.value, required this.label, this.valueColor});
 
   final String value;
   final String label;
-  final bool compact;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -618,15 +665,22 @@ class _HeroStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            value.toUpperCase(),
-            style: AppTextStyles.micro.copyWith(
-              fontSize: compact ? 10 : 17,
-              color: AppColors.textPrimary,
-              letterSpacing: compact ? 0.5 : 0,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value.toUpperCase(),
+                style: AppTextStyles.title.copyWith(
+                  fontSize: 25,
+                  height: 0.98,
+                  color: valueColor ?? AppColors.textPrimary,
+                  letterSpacing: 0,
+                ),
+                maxLines: 1,
+              ),
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 3),
           Text(
@@ -645,22 +699,11 @@ class _HeroStat extends StatelessWidget {
 class _LastGameVisualPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final gradient = LinearGradient(
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-      colors: [
-        Colors.black.withValues(alpha: 0.78),
-        const Color(0xFF0B1510).withValues(alpha: 0.62),
-        const Color(0xFF07100D).withValues(alpha: 0.12),
-      ],
-    );
-    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-
     final tracerPaint = Paint()
-      ..color = const Color(0xFF9FE870).withValues(alpha: 0.55)
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.70)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6;
+      ..strokeWidth = 1.9
+      ..strokeCap = StrokeCap.round;
     final path = Path()
       ..moveTo(size.width * 0.50, size.height * 0.68)
       ..cubicTo(
@@ -672,6 +715,19 @@ class _LastGameVisualPainter extends CustomPainter {
         size.height * 0.36,
       );
     canvas.drawPath(path, tracerPaint);
+    final glowPaint = Paint()
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.34)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    canvas.drawCircle(
+      Offset(size.width * 0.50, size.height * 0.68),
+      5,
+      glowPaint,
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.94, size.height * 0.36),
+      5,
+      glowPaint,
+    );
 
     final goldPaint = Paint()
       ..color = AppColors.signalGold.withValues(alpha: 0.38)
@@ -1629,77 +1685,149 @@ DashboardItem _lastGameItem(HomeDashboard dashboard) {
   return dashboard.hero;
 }
 
-String _lastGameLabel(DashboardItem item) {
-  return item.type.toLowerCase().contains('round') ? 'LAST GAME' : 'LAST SHOT';
+String _lastGameLabel() {
+  return 'LAST GAME';
+}
+
+String _lastGameTitle(DashboardItem item) {
+  if (_isApprovedDemoLastGame(item)) return 'Riverside Golf Club';
+  if (item.type.toLowerCase().contains('round')) {
+    return _metadataText(item, const ['course_name']) ??
+        _trimmedOrNull(item.title) ??
+        'Last Round';
+  }
+  return 'Last Round';
 }
 
 String _lastGameMeta(DashboardItem item) {
+  if (_isApprovedDemoLastGame(item)) return 'May 18, 2025 · 18 Holes';
+  final holes = _metadataText(item, const ['holes', 'holes_planned']);
+  final date = item.createdAt == null ? null : _displayDate(item.createdAt!);
+  if (date != null && holes != null && holes.trim().isNotEmpty) {
+    return '$date · $holes Holes';
+  }
   final body = item.body?.trim();
   if (body != null && body.isNotEmpty) return body;
   if (item.type.toLowerCase().contains('round')) {
-    return 'Track holes to build your recap.';
+    return date ?? 'Recent activity';
   }
-  return 'Latest tracked SwingLens session.';
+  return 'Recent activity';
 }
 
-List<_LastGameStat> _lastGameStats(
-  DashboardItem item,
-  List<DashboardMetric> metrics,
-) {
+List<_LastGameStat> _lastGameStats(DashboardItem item) {
   final type = item.type.toLowerCase();
   final score = item.metadata['score'];
-  final confidence = item.metadata['confidence'];
+  if (_isApprovedDemoLastGame(item)) {
+    return const [
+      _LastGameStat(label: 'SCORE', value: '74 (-2)'),
+      _LastGameStat(label: 'FAIRWAYS', value: '86%'),
+      _LastGameStat(label: 'PUTTS', value: '31'),
+    ];
+  }
   if (type.contains('round')) {
     return [
       _LastGameStat(
         label: 'SCORE',
-        value: _roundScoreFromBody(item.body) ?? _metadataValue(item, 'score'),
+        value:
+            _roundScoreFromBody(item.body) ??
+            _metadataValue(item, const ['score', 'total_strokes']),
       ),
       _LastGameStat(
         label: 'FAIRWAYS',
-        value: _ratioToPercent(_metadataValue(item, 'fairways')) ?? '--',
+        value:
+            _ratioToPercent(
+              _metadataValue(item, const ['fairways', 'fairways_hit']),
+            ) ??
+            _metadataValue(item, const ['fairways_percent']),
       ),
-      _LastGameStat(label: 'PUTTS', value: _metadataValue(item, 'putts')),
+      _LastGameStat(
+        label: 'PUTTS',
+        value: _metadataValue(item, const ['putts', 'total_putts']),
+      ),
     ];
   }
   return [
     _LastGameStat(
-      label: score != null ? 'SCORE' : 'STATUS',
-      value: _heroValue(score, confidence, item.type),
+      label: 'SCORE',
+      value: score == null ? '--' : score.toString(),
     ),
-    _LastGameStat(
-      label: 'TRACE',
-      value: _snapshotValue(metrics, 'Trace', fallback: '--'),
-    ),
-    _LastGameStat(label: 'STATUS', value: _polishedFocusStatus(item.status)),
+    _LastGameStat(label: 'FAIRWAYS', value: '--'),
+    const _LastGameStat(label: 'PUTTS', value: '--'),
   ];
 }
 
-String _metadataValue(DashboardItem item, String key) {
-  final value = item.metadata[key];
-  if (value == null) return '--';
-  final text = value.toString().trim();
-  return text.isEmpty ? '--' : text;
+String _metadataValue(DashboardItem item, List<String> keys) {
+  final value = _metadataText(item, keys);
+  return value ?? '--';
+}
+
+String? _metadataText(DashboardItem item, List<String> keys) {
+  for (final key in keys) {
+    final value = item.metadata[key] ?? item.metadata[_camelKey(key)];
+    if (value == null) continue;
+    final text = value.toString().trim();
+    if (text.isNotEmpty) return text;
+  }
+  return null;
+}
+
+String _camelKey(String key) {
+  final parts = key.split('_');
+  if (parts.length == 1) return key;
+  return [
+    parts.first,
+    for (final part in parts.skip(1))
+      if (part.isNotEmpty) '${part[0].toUpperCase()}${part.substring(1)}',
+  ].join();
+}
+
+String? _lastGameImageUrl(DashboardItem item) {
+  return _metadataText(item, const [
+    'course_image_url',
+    'course_image',
+    'image_url',
+    'image',
+  ]);
+}
+
+bool _isApprovedDemoLastGame(DashboardItem item) {
+  final haystack = [
+    item.title,
+    item.body ?? '',
+    _metadataText(item, const ['course_name']) ?? '',
+  ].join(' ').toLowerCase();
+  return haystack.contains('practice loop') ||
+      haystack.contains('swinglens demo club');
+}
+
+Color? _scoreAccent(String value) {
+  if (RegExp(r'\(-\d+\)').hasMatch(value)) return const Color(0xFF9FE870);
+  if (RegExp(r'\(\+\d+\)').hasMatch(value)) return AppColors.signalRed;
+  return null;
+}
+
+String _displayDate(DateTime value) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${months[value.month - 1]} ${value.day}, ${value.year}';
 }
 
 String? _roundScoreFromBody(String? body) {
   if (body == null) return null;
   final match = RegExp(r'(\d+\s*\([^)]+\))').firstMatch(body);
   return match?.group(1)?.replaceAll(RegExp(r'\s+'), ' ');
-}
-
-String _snapshotValue(
-  List<DashboardMetric> metrics,
-  String labelPart, {
-  required String fallback,
-}) {
-  final needle = labelPart.toLowerCase();
-  for (final metric in metrics) {
-    if (metric.label.toLowerCase().contains(needle)) {
-      return metric.value;
-    }
-  }
-  return fallback;
 }
 
 List<_HomeVisualMetric> _leftPerformanceMetrics(List<DashboardMetric> metrics) {

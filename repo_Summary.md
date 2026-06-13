@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Last Game Course Image Patch
+
+- Added `assets/home/golfcourse.png` from the uploaded Home assets as the default Last Game recap background.
+- Reworked the Home Last Game card only: course image on the right, dark left-to-right gradient, tracer overlay, right-side `VIEW RECAP` pill, and aligned `SCORE` / `FAIRWAYS` / `PUTTS` columns.
+- Added clean fallback behavior for missing course image/title/date/stats and mapped the local demo placeholder round to the approved Riverside recap copy.
+- Updated Home widget coverage to assert the course-image fallback and `LAST GAME` label.
+- Validated with `flutter analyze`, full `flutter test` (`77 passed`), demo reseed, and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-13 Premium Home Floating Metrics Correction
 
 - Refined `/home` after the approved premium dashboard review so the Performance Lab uses floating metric text groups instead of individual boxed stat cards.
