@@ -468,8 +468,8 @@ class _LastGameHeroCard extends StatelessWidget {
         final leftPadding = compact ? 18.0 : 22.0;
         final leftWidth = constraints.maxWidth * (compact ? 0.62 : 0.58);
         final statsWidth = compact
-            ? constraints.maxWidth - 54
-            : constraints.maxWidth * 0.58;
+            ? constraints.maxWidth * 0.53
+            : constraints.maxWidth * 0.50;
         return InkWell(
           key: const ValueKey('home-hero-card'),
           borderRadius: BorderRadius.circular(24),
@@ -511,8 +511,8 @@ class _LastGameHeroCard extends StatelessWidget {
                   ),
                   Positioned(
                     right: compact ? 16 : 20,
-                    top: compact ? 84 : null,
-                    bottom: compact ? null : 28,
+                    top: null,
+                    bottom: compact ? 38 : 30,
                     child: const _TracerRecapButton(),
                   ),
                 ],
@@ -540,22 +540,22 @@ class _LastGameHeader extends StatelessWidget {
           _lastGameLabel(),
           style: AppTextStyles.label.copyWith(
             color: const Color(0xFF9FE870),
-            fontSize: 12,
-            letterSpacing: 1.8,
+            fontSize: 11,
+            letterSpacing: 1.7,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 7),
         Text(
           title,
-          style: AppTextStyles.title.copyWith(fontSize: 21, height: 1.18),
+          style: AppTextStyles.title.copyWith(fontSize: 19, height: 1.18),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 5),
         Text(
           meta,
           style: AppTextStyles.body.copyWith(
-            fontSize: 13.5,
+            fontSize: 12.5,
             color: AppColors.textSecondary.withValues(alpha: 0.72),
           ),
           maxLines: 1,
@@ -576,7 +576,7 @@ class _LastGameStatsRow extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 314;
-        final gap = compact ? 18.0 : 30.0;
+        final gap = compact ? 12.0 : 22.0;
         return Row(
           children: [
             Expanded(
@@ -690,7 +690,7 @@ class _TracerRecapButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 44,
+      height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: const Color(0xFF050607).withValues(alpha: 0.48),
@@ -698,21 +698,21 @@ class _TracerRecapButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 19),
+        padding: const EdgeInsets.symmetric(horizontal: 15),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'VIEW RECAP',
               style: AppTextStyles.micro.copyWith(
-                fontSize: 12,
+                fontSize: 10.5,
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
+                letterSpacing: 1.05,
               ),
             ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, size: 16),
+            const SizedBox(width: 7),
+            const Icon(Icons.chevron_right, size: 15),
           ],
         ),
       ),
@@ -740,7 +740,7 @@ class _HeroStat extends StatelessWidget {
             child: Text(
               value.toUpperCase(),
               style: AppTextStyles.title.copyWith(
-                fontSize: 32,
+                fontSize: 25,
                 height: 0.98,
                 color: valueColor ?? AppColors.textPrimary,
                 letterSpacing: 0,
@@ -753,11 +753,13 @@ class _HeroStat extends StatelessWidget {
         Text(
           label,
           style: AppTextStyles.micro.copyWith(
-            fontSize: 11.5,
+            fontSize: 9.5,
             color: AppColors.textMuted.withValues(alpha: 0.78),
             fontWeight: FontWeight.w700,
-            letterSpacing: 1,
+            letterSpacing: 0.65,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );

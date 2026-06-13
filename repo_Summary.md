@@ -1,5 +1,11 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Last Game Text Fit Patch
+
+- Reduced Last Game banner title, meta, stat, label, and `VIEW RECAP` pill typography so the uploaded reference layout fits cleanly on iPhone widths.
+- Shortened the compact stats zone, reduced stat gaps, forced stat labels to a single line, and moved the recap pill lower-right so it no longer crowds `FAIRWAYS` / `PUTTS`.
+- Validated with `flutter analyze`, full `flutter test` (`77 passed`), and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-13 Last Game Banner Spacing Patch
 
 - Tightened the Home Last Game card to match the uploaded wide recap reference: taller 192/202px responsive banner, full-card course image, stronger left readability gradient, and wider rounded corners.
