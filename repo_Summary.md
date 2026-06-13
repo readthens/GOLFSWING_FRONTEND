@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Last Game Banner Spacing Patch
+
+- Tightened the Home Last Game card to match the uploaded wide recap reference: taller 192/202px responsive banner, full-card course image, stronger left readability gradient, and wider rounded corners.
+- Split the banner into positioned header, stats, and recap-button zones so the title/meta, `SCORE` / `FAIRWAYS` / `PUTTS`, and `VIEW RECAP` pill no longer crowd each other.
+- Made the stats row use flexible columns with fixed gaps to prevent iPhone-width RenderFlex overflow while preserving large value typography.
+- Extended Home widget coverage to assert the card stays at least 190px tall.
+- Validated with `flutter analyze`, full `flutter test` (`77 passed`), and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-13 Last Game Course Image Patch
 
 - Added `assets/home/golfcourse.png` from the uploaded Home assets as the default Last Game recap background.

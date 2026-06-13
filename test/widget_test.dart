@@ -2524,6 +2524,10 @@ void main() {
       find.byKey(const ValueKey('home-last-game-course-image')),
       findsOneWidget,
     );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('home-hero-card'))).height,
+      greaterThanOrEqualTo(190),
+    );
     expect(find.byKey(const ValueKey('home-weather-pill')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('home-center-golfer-asset')),

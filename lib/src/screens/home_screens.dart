@@ -461,71 +461,142 @@ class _LastGameHeroCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final stats = _lastGameStats(item);
     final title = _lastGameTitle(item);
-    return InkWell(
-      key: const ValueKey('home-hero-card'),
-      borderRadius: BorderRadius.circular(22),
-      onTap: () => _openDashboardRoute(context, item.route),
-      child: Container(
-        width: double.infinity,
-        height: 184,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0B0E12),
-          border: Border.all(color: const Color(0x12FFFFFF)),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: _LastGameBackground(item: item),
-              ),
-            ),
-            const Positioned(right: 14, top: 46, child: _TracerRecapButton()),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _lastGameLabel(),
-                  style: AppTextStyles.label.copyWith(
-                    color: const Color(0xFF9FE870),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  title,
-                  style: AppTextStyles.title.copyWith(fontSize: 21),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  _lastGameMeta(item),
-                  style: AppTextStyles.body.copyWith(fontSize: 13),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const Spacer(),
-                SizedBox(
-                  width: 276,
-                  child: Row(
-                    children: [
-                      _HeroStat(
-                        value: stats[0].value,
-                        label: stats[0].label,
-                        valueColor: _scoreAccent(stats[0].value),
-                      ),
-                      _HeroStat(value: stats[1].value, label: stats[1].label),
-                      _HeroStat(value: stats[2].value, label: stats[2].label),
-                    ],
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 380;
+        final height = compact ? 192.0 : 202.0;
+        final leftPadding = compact ? 18.0 : 22.0;
+        final leftWidth = constraints.maxWidth * (compact ? 0.62 : 0.58);
+        final statsWidth = compact
+            ? constraints.maxWidth - 54
+            : constraints.maxWidth * 0.58;
+        return InkWell(
+          key: const ValueKey('home-hero-card'),
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => _openDashboardRoute(context, item.route),
+          child: Container(
+            width: double.infinity,
+            height: height,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0B0E12),
+              border: Border.all(color: const Color(0x14FFFFFF)),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF9FE870).withValues(alpha: 0.055),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
-          ],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Stack(
+                children: [
+                  Positioned.fill(child: _LastGameBackground(item: item)),
+                  Positioned(
+                    left: leftPadding,
+                    top: compact ? 18 : 20,
+                    width: leftWidth,
+                    child: _LastGameHeader(
+                      title: title,
+                      meta: _lastGameMeta(item),
+                    ),
+                  ),
+                  Positioned(
+                    left: leftPadding,
+                    bottom: compact ? 17 : 20,
+                    width: statsWidth,
+                    child: _LastGameStatsRow(stats: stats),
+                  ),
+                  Positioned(
+                    right: compact ? 16 : 20,
+                    top: compact ? 84 : null,
+                    bottom: compact ? null : 28,
+                    child: const _TracerRecapButton(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LastGameHeader extends StatelessWidget {
+  const _LastGameHeader({required this.title, required this.meta});
+
+  final String title;
+  final String meta;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _lastGameLabel(),
+          style: AppTextStyles.label.copyWith(
+            color: const Color(0xFF9FE870),
+            fontSize: 12,
+            letterSpacing: 1.8,
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: AppTextStyles.title.copyWith(fontSize: 21, height: 1.18),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          meta,
+          style: AppTextStyles.body.copyWith(
+            fontSize: 13.5,
+            color: AppColors.textSecondary.withValues(alpha: 0.72),
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+class _LastGameStatsRow extends StatelessWidget {
+  const _LastGameStatsRow({required this.stats});
+
+  final List<_LastGameStat> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 314;
+        final gap = compact ? 18.0 : 30.0;
+        return Row(
+          children: [
+            Expanded(
+              child: _HeroStat(
+                value: stats[0].value,
+                label: stats[0].label,
+                valueColor: _scoreAccent(stats[0].value),
+              ),
+            ),
+            SizedBox(width: gap),
+            Expanded(
+              child: _HeroStat(value: stats[1].value, label: stats[1].label),
+            ),
+            SizedBox(width: gap),
+            Expanded(
+              child: _HeroStat(value: stats[2].value, label: stats[2].label),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -538,52 +609,41 @@ class _LastGameBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUrl = _lastGameImageUrl(item);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            const DecoratedBox(
-              decoration: BoxDecoration(color: Color(0xFF080A0D)),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const DecoratedBox(decoration: BoxDecoration(color: Color(0xFF080A0D))),
+        _CourseImage(url: imageUrl),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                const Color(0xFF050607).withValues(alpha: 0.96),
+                const Color(0xFF050607).withValues(alpha: 0.86),
+                const Color(0xFF050607).withValues(alpha: 0.48),
+                const Color(0xFF050607).withValues(alpha: 0.15),
+              ],
+              stops: const [0, 0.35, 0.55, 1],
             ),
-            Positioned(
-              top: 0,
-              right: 0,
-              bottom: 0,
-              width: constraints.maxWidth * 0.68,
-              child: _CourseImage(url: imageUrl),
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.22),
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.38),
+              ],
             ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    const Color(0xFF050607).withValues(alpha: 0.96),
-                    const Color(0xFF050607).withValues(alpha: 0.78),
-                    const Color(0xFF050607).withValues(alpha: 0.18),
-                  ],
-                  stops: const [0, 0.48, 1],
-                ),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.32),
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.50),
-                  ],
-                ),
-              ),
-            ),
-            CustomPaint(painter: _LastGameVisualPainter()),
-          ],
-        );
-      },
+          ),
+        ),
+        CustomPaint(painter: _LastGameVisualPainter()),
+      ],
     );
   }
 }
@@ -598,12 +658,16 @@ class _CourseImage extends StatelessWidget {
     final url = this.url;
     if (url != null && url.isNotEmpty) {
       if (url.startsWith('assets/')) {
-        return Image.asset(url, fit: BoxFit.cover, alignment: Alignment.center);
+        return Image.asset(
+          url,
+          fit: BoxFit.cover,
+          alignment: Alignment.centerRight,
+        );
       }
       return Image.network(
         url,
         fit: BoxFit.cover,
-        alignment: Alignment.center,
+        alignment: Alignment.centerRight,
         errorBuilder: (context, error, stackTrace) => _fallbackCourseImage(),
       );
     }
@@ -615,7 +679,7 @@ class _CourseImage extends StatelessWidget {
       _homeGolfCourseAsset,
       key: const ValueKey('home-last-game-course-image'),
       fit: BoxFit.cover,
-      alignment: Alignment.center,
+      alignment: Alignment.centerRight,
     );
   }
 }
@@ -625,25 +689,29 @@ class _TracerRecapButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return Container(
+      height: 44,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.45),
-        border: Border.all(color: const Color(0x26FFFFFF)),
+        color: const Color(0xFF050607).withValues(alpha: 0.48),
+        border: Border.all(color: const Color(0x1FFFFFFF)),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 19),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'VIEW RECAP',
               style: AppTextStyles.micro.copyWith(
+                fontSize: 12,
                 color: AppColors.textPrimary,
-                letterSpacing: 1.1,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 8),
             const Icon(Icons.chevron_right, size: 16),
           ],
         ),
@@ -661,37 +729,37 @@ class _HeroStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Align(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                value.toUpperCase(),
-                style: AppTextStyles.title.copyWith(
-                  fontSize: 25,
-                  height: 0.98,
-                  color: valueColor ?? AppColors.textPrimary,
-                  letterSpacing: 0,
-                ),
-                maxLines: 1,
+            child: Text(
+              value.toUpperCase(),
+              style: AppTextStyles.title.copyWith(
+                fontSize: 32,
+                height: 0.98,
+                color: valueColor ?? AppColors.textPrimary,
+                letterSpacing: 0,
               ),
+              maxLines: 1,
             ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            style: AppTextStyles.micro.copyWith(
-              color: AppColors.textMuted,
-              letterSpacing: 1,
-            ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: AppTextStyles.micro.copyWith(
+            fontSize: 11.5,
+            color: AppColors.textMuted.withValues(alpha: 0.78),
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -700,9 +768,9 @@ class _LastGameVisualPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final tracerPaint = Paint()
-      ..color = const Color(0xFF9FE870).withValues(alpha: 0.70)
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.28)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.9
+      ..strokeWidth = 1.4
       ..strokeCap = StrokeCap.round;
     final path = Path()
       ..moveTo(size.width * 0.50, size.height * 0.68)
@@ -716,8 +784,8 @@ class _LastGameVisualPainter extends CustomPainter {
       );
     canvas.drawPath(path, tracerPaint);
     final glowPaint = Paint()
-      ..color = const Color(0xFF9FE870).withValues(alpha: 0.34)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.16)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
     canvas.drawCircle(
       Offset(size.width * 0.50, size.height * 0.68),
       5,
@@ -730,9 +798,9 @@ class _LastGameVisualPainter extends CustomPainter {
     );
 
     final goldPaint = Paint()
-      ..color = AppColors.signalGold.withValues(alpha: 0.38)
+      ..color = AppColors.signalGold.withValues(alpha: 0.16)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.1;
+      ..strokeWidth = 0.8;
     canvas.drawArc(
       Rect.fromLTWH(
         size.width * 0.56,
