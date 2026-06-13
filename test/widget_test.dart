@@ -582,6 +582,7 @@ class DashboardApiClient extends ApiClient {
     this.emptyNotifications = false,
     this.emptyActivity = false,
     this.failRoundHoleWrites = false,
+    this.homeTrendDelta,
   }) : super(baseUrl: 'http://localhost:8000');
 
   final bool emptyStats;
@@ -592,6 +593,7 @@ class DashboardApiClient extends ApiClient {
   final bool emptyNotifications;
   final bool emptyActivity;
   final bool failRoundHoleWrites;
+  final Object? homeTrendDelta;
   int homeDashboardCalls = 0;
   int performanceSnapshotCalls = 0;
   int faultStatsCalls = 0;
@@ -631,7 +633,9 @@ class DashboardApiClient extends ApiClient {
     if (homeDelay != Duration.zero) {
       await Future<void>.delayed(homeDelay);
     }
-    return HomeDashboard.fromJson(_homeDashboardJson());
+    return HomeDashboard.fromJson(
+      _homeDashboardJson(heroTrendDelta: homeTrendDelta),
+    );
   }
 
   @override
@@ -1312,7 +1316,14 @@ Map<String, dynamic> _notificationJson({
   };
 }
 
-Map<String, dynamic> _homeDashboardJson() {
+Map<String, dynamic> _homeDashboardJson({Object? heroTrendDelta}) {
+  final heroMetadata = <String, dynamic>{
+    'score': 82,
+    'main_focus': 'Early Extension',
+  };
+  if (heroTrendDelta != null) {
+    heroMetadata['trend_delta'] = heroTrendDelta;
+  }
   return {
     'user': {
       'id': 'local-test-user',
@@ -1337,7 +1348,7 @@ Map<String, dynamic> _homeDashboardJson() {
       'status': 'ANALYSIS READY',
       'route': '/swings/session-1/report',
       'created_at': '2026-06-06T00:00:00Z',
-      'metadata': {'score': 82, 'main_focus': 'Early Extension'},
+      'metadata': heroMetadata,
     },
     'quick_actions': [
       {
@@ -2508,7 +2519,7 @@ void main() {
     await pumpSwingLensApp(
       tester,
       auth: ReadyTestAuthController(),
-      apiClient: DashboardApiClient(),
+      apiClient: DashboardApiClient(homeTrendDelta: '+8%'),
     );
     await tester.pumpAndSettle();
 
@@ -2534,6 +2545,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('82%'), findsWidgets);
+    expect(find.text('Trend'), findsOneWidget);
+    expect(find.text('8%'), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_upward), findsOneWidget);
     expect(
       find.byKey(const ValueKey('home-action-record_swing')),
       findsOneWidget,

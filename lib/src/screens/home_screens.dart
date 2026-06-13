@@ -840,6 +840,7 @@ class _PerformanceHeroSection extends StatelessWidget {
     final score = hero.metadata['score'];
     final confidence = hero.metadata['confidence'];
     final consistency = _consistencyValue(score, confidence, hero.type);
+    final trend = _consistencyTrend(hero, section.metrics);
     final leftMetrics = _leftPerformanceMetrics(section.metrics);
     final rightMetrics = _rightPerformanceMetrics(section.metrics);
     return Container(
@@ -882,8 +883,8 @@ class _PerformanceHeroSection extends StatelessWidget {
                   child: CustomPaint(painter: _PerformanceHaloPainter()),
                 ),
                 Positioned(
-                  top: 14,
-                  bottom: 76,
+                  top: 34,
+                  bottom: 46,
                   left: 42,
                   right: 42,
                   child: Image.asset(
@@ -906,47 +907,12 @@ class _PerformanceHeroSection extends StatelessWidget {
                   child: _MetricColumn(metrics: rightMetrics, alignEnd: true),
                 ),
                 Positioned(
-                  bottom: 0,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(999),
+                  bottom: -2,
+                  child: _ConsistencyMetric(
+                    value: consistency,
+                    caption: _consistencyCaption(score, confidence),
+                    trend: trend,
                     onTap: () => _openDashboardRoute(context, hero.route),
-                    child: Container(
-                      width: 206,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.36),
-                        border: Border.all(color: const Color(0x339FE870)),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            'SWING CONSISTENCY',
-                            style: AppTextStyles.micro.copyWith(
-                              color: const Color(0xFF9FE870),
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            consistency,
-                            style: AppTextStyles.title.copyWith(fontSize: 28),
-                          ),
-                          Text(
-                            _consistencyCaption(score, confidence),
-                            style: AppTextStyles.micro.copyWith(
-                              color: AppColors.textMuted,
-                              letterSpacing: 0,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -979,6 +945,106 @@ class _LastGameStat {
 
   final String label;
   final String value;
+}
+
+class _ConsistencyTrend {
+  const _ConsistencyTrend({required this.direction, required this.value});
+
+  final int direction;
+  final String value;
+}
+
+class _ConsistencyMetric extends StatelessWidget {
+  const _ConsistencyMetric({
+    required this.value,
+    required this.caption,
+    required this.onTap,
+    this.trend,
+  });
+
+  final String value;
+  final String caption;
+  final VoidCallback onTap;
+  final _ConsistencyTrend? trend;
+
+  @override
+  Widget build(BuildContext context) {
+    final trend = this.trend;
+    final trendColor = trend == null
+        ? AppColors.textMuted
+        : trend.direction >= 0
+        ? const Color(0xFF9FE870)
+        : AppColors.signalRed;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'SWING CONSISTENCY',
+              style: AppTextStyles.micro.copyWith(
+                color: const Color(0xFF9FE870),
+                fontSize: 11,
+                letterSpacing: 1.25,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: AppTextStyles.title.copyWith(fontSize: 34, height: 1),
+            ),
+            const SizedBox(height: 2),
+            if (trend == null)
+              Text(
+                caption,
+                style: AppTextStyles.micro.copyWith(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                  letterSpacing: 0,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              )
+            else
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Trend',
+                    style: AppTextStyles.micro.copyWith(
+                      color: AppColors.textMuted,
+                      fontSize: 11,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Icon(
+                    trend.direction >= 0
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward,
+                    size: 13,
+                    color: trendColor,
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    trend.value,
+                    style: AppTextStyles.micro.copyWith(
+                      color: trendColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _MetricColumn extends StatelessWidget {
@@ -1227,10 +1293,11 @@ class _QuickActionGrid extends StatelessWidget {
         const Text('QUICK ACTIONS', style: AppTextStyles.label),
         const SizedBox(height: 10),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (var index = 0; index < rowActions.length; index++) ...[
               Expanded(child: _QuickActionTile(action: rowActions[index])),
-              if (index != rowActions.length - 1) const SizedBox(width: 10),
+              if (index != rowActions.length - 1) const SizedBox(width: 8),
             ],
           ],
         ),
@@ -1254,42 +1321,64 @@ class _QuickActionTile extends StatelessWidget {
           ? () => _openDashboardRoute(context, action.route)
           : null,
       child: Container(
-        height: 118,
-        padding: const EdgeInsets.all(12),
+        height: 124,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF0D1014),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFF141A1B).withValues(alpha: 0.82),
+              const Color(0xFF080A0B).withValues(alpha: 0.94),
+            ],
+          ),
           border: Border.all(color: const Color(0x1FFFFFFF)),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(
               _actionIcon(action.id),
-              size: 22,
+              size: 28,
               color: _actionAccent(action.id),
             ),
-            const Spacer(),
-            Text(
-              action.title.toUpperCase(),
-              style: AppTextStyles.micro.copyWith(
-                color: AppColors.textPrimary,
-                letterSpacing: 0.8,
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  action.title.toUpperCase(),
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.micro.copyWith(
+                    color: AppColors.textPrimary,
+                    fontSize: 10.5,
+                    letterSpacing: 0.55,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
             if (subtitle != null) ...[
               const SizedBox(height: 6),
-              Text(
-                subtitle,
-                style: AppTextStyles.micro.copyWith(
-                  color: AppColors.textMuted,
-                  letterSpacing: 0,
-                  fontWeight: FontWeight.w600,
+              SizedBox(
+                width: double.infinity,
+                child: Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.micro.copyWith(
+                    color: AppColors.textMuted,
+                    fontSize: 10.5,
+                    letterSpacing: 0,
+                    fontWeight: FontWeight.w600,
+                    height: 1.15,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
             ],
           ],
@@ -2014,6 +2103,92 @@ String _consistencyCaption(Object? score, Object? confidence) {
   if (score != null) return 'Latest swing score';
   if (confidence != null) return 'Tracer confidence';
   return 'Track a swing';
+}
+
+_ConsistencyTrend? _consistencyTrend(
+  DashboardItem hero,
+  List<DashboardMetric> metrics,
+) {
+  const metadataKeys = [
+    'trend_delta',
+    'trend_percent',
+    'trend',
+    'score_delta',
+    'confidence_delta',
+    'delta',
+  ];
+  for (final key in metadataKeys) {
+    final trend = _trendFromValue(hero.metadata[key]);
+    if (trend != null) return trend;
+  }
+
+  final targetLabels = hero.metadata['score'] != null
+      ? const ['consistency', 'swing score', 'swing']
+      : hero.metadata['confidence'] != null
+      ? const ['consistency', 'trace confidence', 'confidence', 'trace']
+      : const ['consistency'];
+  for (final metric in metrics) {
+    final delta = metric.delta;
+    if (delta == null || delta.trim().isEmpty) continue;
+    final label = metric.label.toLowerCase();
+    final matchesHeroMetric = targetLabels.any(
+      (needle) => label.contains(needle),
+    );
+    if (!matchesHeroMetric) continue;
+    final trend = _trendFromValue(delta);
+    if (trend != null) return trend;
+  }
+  return null;
+}
+
+_ConsistencyTrend? _trendFromValue(Object? value) {
+  if (value == null) return null;
+  if (value is num) {
+    if (value == 0) return null;
+    return _ConsistencyTrend(
+      direction: value > 0 ? 1 : -1,
+      value: _formatTrendNumber(value.abs()),
+    );
+  }
+
+  final raw = value.toString().trim();
+  if (raw.isEmpty) return null;
+  final lower = raw.toLowerCase();
+  final isDown =
+      raw.contains('↓') ||
+      raw.contains('▼') ||
+      lower.contains('down') ||
+      lower.contains('decrease');
+  final isUp =
+      raw.contains('↑') ||
+      raw.contains('▲') ||
+      lower.contains('up') ||
+      lower.contains('increase');
+  final hasSignedNumber = raw.contains('+') || raw.contains('-');
+  if (!isDown && !isUp && !hasSignedNumber) return null;
+
+  final match = RegExp(r'[-+]?\d+(?:\.\d+)?\s*%?').firstMatch(raw);
+  if (match == null) return null;
+  final token = match.group(0)!.replaceAll(RegExp(r'\s+'), '');
+  final number = num.tryParse(token.replaceAll('%', ''));
+  if (number == null || number == 0) return null;
+  final direction = isDown
+      ? -1
+      : isUp
+      ? 1
+      : number < 0
+      ? -1
+      : 1;
+  final suffix = token.contains('%') || lower.contains('percent') ? '%' : '';
+  return _ConsistencyTrend(
+    direction: direction,
+    value: '${_formatTrendNumber(number.abs())}$suffix',
+  );
+}
+
+String _formatTrendNumber(num value) {
+  final fixed = value.toStringAsFixed(value % 1 == 0 ? 0 : 1);
+  return fixed.endsWith('.0') ? fixed.substring(0, fixed.length - 2) : fixed;
 }
 
 String _polishedFocusStatus(String? status) {

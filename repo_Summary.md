@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Home Performance Hero And Quick Actions Polish
+
+- Removed the bordered `SWING CONSISTENCY` pill from the Home Performance Lab and replaced it with a text-only metric stack under the golfer image.
+- Lowered the central golfer asset slightly and added honest trend rendering: green up arrow or red down arrow only when Home data provides a real trend/delta; otherwise the caption remains.
+- Reworked Quick Actions into a tighter aligned row with centered icons, labels, subtitles, consistent height, and smaller gaps.
+- Extended Home widget coverage for the trend arrow state.
+- Validated with focused Home widget tests, `flutter analyze`, full `flutter test` (`77 passed`), `git diff --check`, and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-13 Last Game Text Fit Patch
 
 - Reduced Last Game banner title, meta, stat, label, and `VIEW RECAP` pill typography so the uploaded reference layout fits cleanly on iPhone widths.
