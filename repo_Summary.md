@@ -1,7 +1,16 @@
 # Frontend Repo Summary
 
-## 2026-06-13 Full-Screen Shot Tracer Camera
+## 2026-06-13 Shot Tracer Camera Flow Correction
 
+- Removed the separate `/tracer/camera` screen and restored Shot Tracer start behavior to the existing tracer capture pipeline.
+- Kept `/tracer/new` as the start alias, now redirecting into `/capture/tracer?camera=1`, while `IMPORT VIDEO` remains on the intro and continues to open `/capture/tracer`.
+- Added a camera-first presentation inside `UploadScreen(mode: tracer)`: large SwingLens-style preview, status/timer HUD, readiness chips, record deck, guide-lock controls, no duplicate import/choose-video controls in camera-first entry, and the existing upload/session/offline metadata path remains intact.
+- Preserved the original import/review tracer upload screen for gallery imports and regression coverage.
+- Validated with focused tracer tests, `flutter analyze`, full `flutter test` (`79 passed`), `git diff --check`, and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
+## 2026-06-13 Full-Screen Shot Tracer Camera (Superseded)
+
+- Superseded by the Shot Tracer Camera Flow Correction above; the separate route was removed in favor of the existing tracer capture pipeline.
 - Added a dedicated full-screen `/tracer/camera` route and changed `/tracer/new` to enter that camera-style recorder instead of the form-heavy tracer upload screen.
 - Updated the Shot Tracer intro `START TRACER CAMERA` CTA to open the full-screen camera surface; `IMPORT VIDEO` remains on the intro and continues to use `/capture/tracer`.
 - Built the camera surface with rear-camera preview when available, simulator-safe image fallback, immersive system UI, timer/status HUD, guide overlay, impact-lock/tracer arc states, high-FPS readiness indicators, and a SmoothSwing-style bottom record deck.

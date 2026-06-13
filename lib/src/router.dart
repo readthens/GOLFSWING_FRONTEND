@@ -7,7 +7,6 @@ import 'screens/auth_screens.dart';
 import 'screens/home_screens.dart';
 import 'screens/onboarding_screens.dart';
 import 'screens/settings_screens.dart';
-import 'screens/shot_tracer_camera_screen.dart';
 import 'screens/upload_screens.dart';
 import 'widgets/app_chrome.dart';
 
@@ -190,7 +189,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: 'new',
-                    redirect: (context, state) => '/tracer/camera',
+                    redirect: (context, state) => '/capture/tracer?camera=1',
                   ),
                 ],
               ),
@@ -254,17 +253,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const DeleteAccountScreen(),
       ),
       GoRoute(
-        path: '/tracer/camera',
-        builder: (context, state) => const ShotTracerCameraScreen(),
-      ),
-      GoRoute(
         path: '/capture/review',
         builder: (context, state) => const UploadScreen(),
       ),
       GoRoute(
         path: '/capture/tracer',
-        builder: (context, state) =>
-            const UploadScreen(mode: UploadMode.tracer),
+        builder: (context, state) => UploadScreen(
+          mode: UploadMode.tracer,
+          cameraFirst: state.uri.queryParameters['camera'] == '1',
+        ),
       ),
     ],
     errorBuilder: (context, state) =>
