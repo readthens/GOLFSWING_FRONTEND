@@ -1,10 +1,18 @@
 # Frontend Repo Summary
 
+## 2026-06-13 Premium Home Floating Metrics Correction
+
+- Refined `/home` after the approved premium dashboard review so the Performance Lab uses floating metric text groups instead of individual boxed stat cards.
+- Enlarged the central golfer hero treatment with a darker cinematic surface, larger analytics halo, dotted ring detail, and a glowing base platform.
+- Polished the Last Game/Last Shot card with an asset-backed visual layer, softer border treatment, tracer styling, and clean round stat fallbacks.
+- Removed user-facing debug copy from the Home hero such as `POSE BASED`, `NOT ENOUGH`, `Rounds v2`, and `Open stats`; unavailable metrics now render as `--`, `No club`, or concise track-more copy.
+- Validated with `flutter analyze`, full `flutter test` (`77 passed`), live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator, demo reseed, and simulator screenshot review.
+
 ## 2026-06-13 Asset-Backed Home Dashboard
 
 - Reworked `/home` around the uploaded `swinglens_home_exact_ui_orientation.md` direction: brand row, notification/avatar controls, greeting, honest weather-off pill, priority row, Last Game recap, central Performance Lab, quick actions, and recent activity.
 - Copied the uploaded golfer/avatar PNGs into `assets/home/` and registered them in `pubspec.yaml`; Home now uses the behind-the-back golfer asset as the central performance visual and asset-backed activity cards.
-- Kept metrics honest: weather remains disabled until an API exists, unsupported handicap/GIR style fields stay `NOT ENOUGH`, and tracer values remain visual-only/confidence-oriented.
+- Kept metrics honest: weather remains disabled until an API exists, unavailable round/club metrics use clean empty fallbacks, and tracer values remain visual-only/confidence-oriented.
 - Updated Home/widget expectations and live dashboard smoke markers for the new Home hierarchy.
 - Validated with `flutter analyze`, full `flutter test` (`77 passed`), live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator, demo reseed, and simulator screenshot review.
 

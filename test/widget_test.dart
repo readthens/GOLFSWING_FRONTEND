@@ -2513,14 +2513,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Good morning, Local.'), findsOneWidget);
-    expect(find.text('LAST GAME'), findsOneWidget);
+    expect(find.text('LAST SHOT'), findsOneWidget);
     expect(find.text('PERFORMANCE LAB'), findsOneWidget);
+    expect(find.text('POSE BASED'), findsNothing);
+    expect(find.text('NOT ENOUGH'), findsNothing);
+    expect(find.text('Rounds v2'), findsNothing);
+    expect(find.text('Open stats'), findsNothing);
     expect(find.byKey(const ValueKey('home-weather-pill')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('home-center-golfer-asset')),
       findsOneWidget,
     );
-    expect(find.text('82'), findsWidgets);
+    expect(find.text('82%'), findsWidgets);
     expect(
       find.byKey(const ValueKey('home-action-record_swing')),
       findsOneWidget,

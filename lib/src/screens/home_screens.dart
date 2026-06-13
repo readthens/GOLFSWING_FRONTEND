@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -461,8 +462,7 @@ class _LastGameHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = item.metadata['score'];
-    final confidence = item.metadata['confidence'];
+    final stats = _lastGameStats(item, metrics);
     return InkWell(
       key: const ValueKey('home-hero-card'),
       borderRadius: BorderRadius.circular(22),
@@ -473,7 +473,7 @@ class _LastGameHeroCard extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: const Color(0xFF0B0E12),
-          border: Border.all(color: const Color(0x1FFFFFFF)),
+          border: Border.all(color: const Color(0x12FFFFFF)),
           borderRadius: BorderRadius.circular(22),
         ),
         child: Stack(
@@ -482,6 +482,32 @@ class _LastGameHeroCard extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
                 child: CustomPaint(painter: _LastGameVisualPainter()),
+              ),
+            ),
+            Positioned(
+              right: -26,
+              top: -34,
+              bottom: -34,
+              width: 216,
+              child: Opacity(
+                opacity: 0.28,
+                child: Image.asset(_activityAsset(item), fit: BoxFit.cover),
+              ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.18),
+                      Colors.black.withValues(alpha: 0.06),
+                      Colors.black.withValues(alpha: 0.54),
+                    ],
+                  ),
+                ),
               ),
             ),
             const Positioned(right: 14, top: 14, child: _TracerRecapButton()),
@@ -500,7 +526,7 @@ class _LastGameHeroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'LAST GAME',
+                  _lastGameLabel(item),
                   style: AppTextStyles.label.copyWith(
                     color: const Color(0xFF9FE870),
                   ),
@@ -514,7 +540,7 @@ class _LastGameHeroCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  item.body ?? 'Track more rounds to build your recap.',
+                  _lastGameMeta(item),
                   style: AppTextStyles.body.copyWith(fontSize: 13),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -524,17 +550,11 @@ class _LastGameHeroCard extends StatelessWidget {
                   width: 238,
                   child: Row(
                     children: [
+                      _HeroStat(value: stats[0].value, label: stats[0].label),
+                      _HeroStat(value: stats[1].value, label: stats[1].label),
                       _HeroStat(
-                        value: _heroValue(score, confidence, item.type),
-                        label: score != null ? 'SCORE' : 'STATUS',
-                      ),
-                      _HeroStat(
-                        value: _snapshotValue(metrics, 'Trace', fallback: '--'),
-                        label: 'TRACE',
-                      ),
-                      _HeroStat(
-                        value: item.status ?? 'READY',
-                        label: 'STATE',
+                        value: stats[2].value,
+                        label: stats[2].label,
                         compact: true,
                       ),
                     ],
@@ -693,14 +713,20 @@ class _PerformanceHeroSection extends StatelessWidget {
     final asset = _homeGolferAsset(user);
     final score = hero.metadata['score'];
     final confidence = hero.metadata['confidence'];
-    final consistency = _heroValue(score, confidence, hero.type);
+    final consistency = _consistencyValue(score, confidence, hero.type);
+    final leftMetrics = _leftPerformanceMetrics(section.metrics);
+    final rightMetrics = _rightPerformanceMetrics(section.metrics);
     return Container(
       key: const ValueKey('home-performance-hero'),
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 16, 14, 18),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
       decoration: BoxDecoration(
-        color: const Color(0xFF07090B),
-        border: Border.all(color: const Color(0x1FFFFFFF)),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF0A0D10), Color(0xFF030405)],
+        ),
+        border: Border.all(color: Color(0x12FFFFFF)),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
@@ -716,12 +742,12 @@ class _PerformanceHeroSection extends StatelessWidget {
                   ),
                 ),
               ),
-              if (focus.status != null) _StatusPill(label: focus.status!),
+              _StatusPill(label: _polishedFocusStatus(focus.status)),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 382,
+            height: 468,
             child: Stack(
               clipBehavior: Clip.none,
               alignment: Alignment.center,
@@ -730,10 +756,10 @@ class _PerformanceHeroSection extends StatelessWidget {
                   child: CustomPaint(painter: _PerformanceHaloPainter()),
                 ),
                 Positioned(
-                  top: 4,
-                  bottom: 26,
-                  left: 58,
-                  right: 58,
+                  top: 14,
+                  bottom: 76,
+                  left: 42,
+                  right: 42,
                   child: Image.asset(
                     asset,
                     key: const ValueKey('home-center-golfer-asset'),
@@ -743,77 +769,30 @@ class _PerformanceHeroSection extends StatelessWidget {
                 ),
                 Positioned(
                   left: 0,
-                  top: 38,
-                  width: 108,
-                  child: _MetricColumn(
-                    metrics: [
-                      _HomeVisualMetric(
-                        'SWING SCORE',
-                        _snapshotValue(
-                          section.metrics,
-                          'Swing',
-                          fallback: consistency,
-                        ),
-                        route: '/stats/swings',
-                      ),
-                      _HomeVisualMetric(
-                        'TRACE CONF.',
-                        _snapshotValue(
-                          section.metrics,
-                          'Trace',
-                          fallback: '--',
-                        ),
-                        route: '/stats/tracer',
-                      ),
-                      _HomeVisualMetric(
-                        'GIR',
-                        'NOT ENOUGH',
-                        caption: 'Rounds v2',
-                      ),
-                    ],
-                  ),
+                  top: 44,
+                  width: 118,
+                  child: _MetricColumn(metrics: leftMetrics),
                 ),
                 Positioned(
                   right: 0,
-                  top: 38,
-                  width: 108,
-                  child: _MetricColumn(
-                    alignEnd: true,
-                    metrics: [
-                      const _HomeVisualMetric(
-                        'HANDICAP',
-                        'NOT ENOUGH',
-                        caption: 'No estimate',
-                      ),
-                      const _HomeVisualMetric(
-                        'BEST CLUB',
-                        'CLUB BAG',
-                        caption: 'Open stats',
-                        route: '/stats/clubs',
-                      ),
-                      _HomeVisualMetric(
-                        'FOCUS',
-                        focus.status ?? 'READY',
-                        caption: focus.title,
-                        route: focus.route,
-                      ),
-                    ],
-                  ),
+                  top: 44,
+                  width: 118,
+                  child: _MetricColumn(metrics: rightMetrics, alignEnd: true),
                 ),
                 Positioned(
-                  bottom: 2,
+                  bottom: 0,
                   child: InkWell(
                     borderRadius: BorderRadius.circular(999),
                     onTap: () => _openDashboardRoute(context, hero.route),
                     child: Container(
-                      width: 188,
+                      width: 206,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.62),
-                        border: Border.all(color: const Color(0x559FE870)),
+                        color: Colors.black.withValues(alpha: 0.36),
+                        border: Border.all(color: const Color(0x339FE870)),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Column(
@@ -830,6 +809,15 @@ class _PerformanceHeroSection extends StatelessWidget {
                             consistency,
                             style: AppTextStyles.title.copyWith(fontSize: 28),
                           ),
+                          Text(
+                            _consistencyCaption(score, confidence),
+                            style: AppTextStyles.micro.copyWith(
+                              color: AppColors.textMuted,
+                              letterSpacing: 0,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ],
                       ),
                     ),
@@ -845,12 +833,26 @@ class _PerformanceHeroSection extends StatelessWidget {
 }
 
 class _HomeVisualMetric {
-  const _HomeVisualMetric(this.label, this.value, {this.caption, this.route});
+  const _HomeVisualMetric(
+    this.label,
+    this.value, {
+    this.caption,
+    this.route,
+    this.active = true,
+  });
 
   final String label;
   final String value;
   final String? caption;
   final String? route;
+  final bool active;
+}
+
+class _LastGameStat {
+  const _LastGameStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
 }
 
 class _MetricColumn extends StatelessWidget {
@@ -884,18 +886,12 @@ class _HomeMetricPod extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(8),
       onTap: metric.route == null
           ? null
           : () => _openDashboardRoute(context, metric.route),
-      child: Container(
-        width: 108,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.46),
-          border: Border.all(color: const Color(0x1FFFFFFF)),
-          borderRadius: BorderRadius.circular(14),
-        ),
+      child: SizedBox(
+        width: 118,
         child: Column(
           crossAxisAlignment: alignEnd
               ? CrossAxisAlignment.end
@@ -904,23 +900,42 @@ class _HomeMetricPod extends StatelessWidget {
             Text(
               metric.label,
               style: AppTextStyles.micro.copyWith(
-                color: AppColors.textMuted,
-                letterSpacing: 0.8,
+                color: AppColors.textMuted.withValues(alpha: 0.92),
+                letterSpacing: 0.9,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 5),
-            Text(
-              metric.value.toUpperCase(),
-              textAlign: alignEnd ? TextAlign.right : TextAlign.left,
-              style: AppTextStyles.micro.copyWith(
-                fontSize: metric.value.length > 8 ? 10 : 18,
-                color: AppColors.textPrimary,
-                letterSpacing: 0,
+            Align(
+              alignment: alignEnd
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: alignEnd
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: Text(
+                  _cleanPrimaryMetricValue(metric.value),
+                  textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+                  style: AppTextStyles.title.copyWith(
+                    fontSize: 23,
+                    height: 0.98,
+                    color: metric.active
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                    letterSpacing: 0,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.82),
+                        blurRadius: 10,
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
             if (metric.caption != null) ...[
               const SizedBox(height: 5),
@@ -937,7 +952,7 @@ class _HomeMetricPod extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 7),
-            _Sparkline(alignEnd: alignEnd),
+            _Sparkline(alignEnd: alignEnd, active: metric.active),
           ],
         ),
       ),
@@ -946,28 +961,31 @@ class _HomeMetricPod extends StatelessWidget {
 }
 
 class _Sparkline extends StatelessWidget {
-  const _Sparkline({required this.alignEnd});
+  const _Sparkline({required this.alignEnd, required this.active});
 
   final bool alignEnd;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: const Size(76, 16),
-      painter: _SparklinePainter(alignEnd: alignEnd),
+      painter: _SparklinePainter(alignEnd: alignEnd, active: active),
     );
   }
 }
 
 class _SparklinePainter extends CustomPainter {
-  const _SparklinePainter({required this.alignEnd});
+  const _SparklinePainter({required this.alignEnd, required this.active});
 
   final bool alignEnd;
+  final bool active;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF9FE870).withValues(alpha: 0.58)
+      ..color = (active ? const Color(0xFF9FE870) : AppColors.textMuted)
+          .withValues(alpha: active ? 0.58 : 0.34)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     final path = Path();
@@ -988,18 +1006,26 @@ class _SparklinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SparklinePainter oldDelegate) {
-    return oldDelegate.alignEnd != alignEnd;
+    return oldDelegate.alignEnd != alignEnd || oldDelegate.active != active;
   }
 }
 
 class _PerformanceHaloPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height * 0.54);
+    final center = Offset(size.width / 2, size.height * 0.48);
     final ringRect = Rect.fromCenter(
       center: center,
-      width: size.width * 0.72,
-      height: size.width * 0.72,
+      width: size.width * 0.82,
+      height: size.width * 0.82,
+    );
+    canvas.drawCircle(
+      center,
+      size.width * 0.30,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8
+        ..color = Colors.white.withValues(alpha: 0.045),
     );
     final haloPaint = Paint()
       ..style = PaintingStyle.stroke
@@ -1014,10 +1040,33 @@ class _PerformanceHaloPainter extends CustomPainter {
       ).createShader(ringRect);
     canvas.drawArc(ringRect, -2.9, 5.6, false, haloPaint);
 
+    final dotPaint = Paint()
+      ..color = const Color(0xFF9FE870).withValues(alpha: 0.26)
+      ..style = PaintingStyle.fill;
+    for (var index = 0; index < 44; index++) {
+      final angle = index * 0.142;
+      final radius = size.width * 0.38;
+      final offset = Offset(
+        center.dx + radius * 0.96 * math.cos(angle),
+        center.dy + radius * math.sin(angle),
+      );
+      canvas.drawCircle(offset, index.isEven ? 1.0 : 0.65, dotPaint);
+    }
+
     final baseRect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.84),
-      width: size.width * 0.56,
-      height: 56,
+      center: Offset(size.width / 2, size.height * 0.78),
+      width: size.width * 0.62,
+      height: 68,
+    );
+    canvas.drawOval(
+      baseRect.inflate(18),
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFF9FE870).withValues(alpha: 0.22),
+            const Color(0xFF9FE870).withValues(alpha: 0.0),
+          ],
+        ).createShader(baseRect.inflate(34)),
     );
     final basePaint = Paint()
       ..style = PaintingStyle.stroke
@@ -1071,6 +1120,7 @@ class _QuickActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final subtitle = _actionSubtitle(action);
     return InkWell(
       key: ValueKey('home-action-${action.id}'),
       borderRadius: BorderRadius.circular(18),
@@ -1103,10 +1153,10 @@ class _QuickActionTile extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            if (action.subtitle != null) ...[
+            if (subtitle != null) ...[
               const SizedBox(height: 6),
               Text(
-                action.subtitle!,
+                subtitle,
                 style: AppTextStyles.micro.copyWith(
                   color: AppColors.textMuted,
                   letterSpacing: 0,
@@ -1579,6 +1629,65 @@ DashboardItem _lastGameItem(HomeDashboard dashboard) {
   return dashboard.hero;
 }
 
+String _lastGameLabel(DashboardItem item) {
+  return item.type.toLowerCase().contains('round') ? 'LAST GAME' : 'LAST SHOT';
+}
+
+String _lastGameMeta(DashboardItem item) {
+  final body = item.body?.trim();
+  if (body != null && body.isNotEmpty) return body;
+  if (item.type.toLowerCase().contains('round')) {
+    return 'Track holes to build your recap.';
+  }
+  return 'Latest tracked SwingLens session.';
+}
+
+List<_LastGameStat> _lastGameStats(
+  DashboardItem item,
+  List<DashboardMetric> metrics,
+) {
+  final type = item.type.toLowerCase();
+  final score = item.metadata['score'];
+  final confidence = item.metadata['confidence'];
+  if (type.contains('round')) {
+    return [
+      _LastGameStat(
+        label: 'SCORE',
+        value: _roundScoreFromBody(item.body) ?? _metadataValue(item, 'score'),
+      ),
+      _LastGameStat(
+        label: 'FAIRWAYS',
+        value: _ratioToPercent(_metadataValue(item, 'fairways')) ?? '--',
+      ),
+      _LastGameStat(label: 'PUTTS', value: _metadataValue(item, 'putts')),
+    ];
+  }
+  return [
+    _LastGameStat(
+      label: score != null ? 'SCORE' : 'STATUS',
+      value: _heroValue(score, confidence, item.type),
+    ),
+    _LastGameStat(
+      label: 'TRACE',
+      value: _snapshotValue(metrics, 'Trace', fallback: '--'),
+    ),
+    _LastGameStat(label: 'STATUS', value: _polishedFocusStatus(item.status)),
+  ];
+}
+
+String _metadataValue(DashboardItem item, String key) {
+  final value = item.metadata[key];
+  if (value == null) return '--';
+  final text = value.toString().trim();
+  return text.isEmpty ? '--' : text;
+}
+
+String? _roundScoreFromBody(String? body) {
+  if (body == null) return null;
+  final match = RegExp(r'(\d+\s*\([^)]+\))').firstMatch(body);
+  return match?.group(1)?.replaceAll(RegExp(r'\s+'), ' ');
+}
+
 String _snapshotValue(
   List<DashboardMetric> metrics,
   String labelPart, {
@@ -1591,6 +1700,144 @@ String _snapshotValue(
     }
   }
   return fallback;
+}
+
+List<_HomeVisualMetric> _leftPerformanceMetrics(List<DashboardMetric> metrics) {
+  final drivingAccuracy = _metricValueForLabels(metrics, const [
+    'Driving Accuracy',
+    'Fairways',
+  ]);
+  final avgDrive = _metricValueForLabels(metrics, const [
+    'Average Drive',
+    'Avg. Drive',
+    'Avg Drive',
+    'Drive Distance',
+  ]);
+  final gir = _metricValueForLabels(metrics, const ['GIR', 'Greens']);
+  return [
+    _HomeVisualMetric(
+      'DRIVING ACCURACY',
+      _ratioToPercent(drivingAccuracy) ?? drivingAccuracy ?? '--',
+      caption: drivingAccuracy == null ? 'Track rounds' : 'Tracked fairways',
+      route: '/stats/rounds',
+      active: drivingAccuracy != null,
+    ),
+    _HomeVisualMetric(
+      'AVG. DRIVE',
+      avgDrive ?? '--',
+      caption: avgDrive == null ? 'Track shots' : 'Tracked shots',
+      route: '/stats/clubs',
+      active: avgDrive != null,
+    ),
+    _HomeVisualMetric(
+      'GIR',
+      _ratioToPercent(gir) ?? gir ?? '--',
+      caption: gir == null ? 'Track rounds' : 'Greens in regulation',
+      route: '/stats/rounds',
+      active: gir != null,
+    ),
+  ];
+}
+
+List<_HomeVisualMetric> _rightPerformanceMetrics(
+  List<DashboardMetric> metrics,
+) {
+  final bestClub = _metricValueForLabels(metrics, const [
+    'Best Club',
+    'Most Used Club',
+    'Captured Club',
+  ]);
+  final scoringAverage = _metricValueForLabels(metrics, const [
+    'Scoring Average',
+    'Average Score',
+  ]);
+  return [
+    const _HomeVisualMetric(
+      'HANDICAP',
+      '--',
+      caption: 'Not calculated',
+      route: '/stats/rounds',
+      active: false,
+    ),
+    _HomeVisualMetric(
+      'BEST CLUB',
+      bestClub ?? 'No club',
+      caption: bestClub == null ? 'Track a club' : 'Captured club',
+      route: '/stats/clubs',
+      active: bestClub != null,
+    ),
+    _HomeVisualMetric(
+      'SCORING AVG.',
+      scoringAverage ?? '--',
+      caption: scoringAverage == null ? 'Track rounds' : 'Tracked rounds',
+      route: '/stats/rounds',
+      active: scoringAverage != null,
+    ),
+  ];
+}
+
+String? _metricValueForLabels(
+  List<DashboardMetric> metrics,
+  List<String> labels,
+) {
+  for (final label in labels) {
+    final needle = label.toLowerCase();
+    for (final metric in metrics) {
+      if (metric.label.toLowerCase().contains(needle)) {
+        final value = metric.value.trim();
+        if (value.isNotEmpty) return value;
+      }
+    }
+  }
+  return null;
+}
+
+String? _ratioToPercent(String? value) {
+  if (value == null) return null;
+  final match = RegExp(r'^\s*(\d+)\s*/\s*(\d+)\s*$').firstMatch(value);
+  if (match == null) return null;
+  final numerator = int.tryParse(match.group(1)!);
+  final denominator = int.tryParse(match.group(2)!);
+  if (numerator == null || denominator == null || denominator == 0) {
+    return null;
+  }
+  return '${(numerator / denominator * 100).round()}%';
+}
+
+String _consistencyValue(Object? score, Object? confidence, String type) {
+  final value = _heroValue(score, confidence, type).trim();
+  if (value == 'START' || value == 'READY') return '--';
+  if (value.endsWith('%')) return value;
+  final numeric = num.tryParse(value);
+  return numeric == null ? value : '${numeric.round()}%';
+}
+
+String _consistencyCaption(Object? score, Object? confidence) {
+  if (score != null) return 'Latest swing score';
+  if (confidence != null) return 'Tracer confidence';
+  return 'Track a swing';
+}
+
+String _polishedFocusStatus(String? status) {
+  final upper = (status ?? '').toUpperCase();
+  if (upper.contains('POSE')) return 'TRACKED DATA';
+  if (upper.contains('ANALYSIS')) return 'ANALYSIS';
+  if (upper.contains('CAPTURE')) return 'READY';
+  if (upper.contains('REVIEW')) return 'NEEDS REVIEW';
+  if (upper.trim().isEmpty) return 'READY';
+  return upper;
+}
+
+String _cleanPrimaryMetricValue(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return '--';
+  final lower = trimmed.toLowerCase();
+  if (lower.contains('not enough')) return '--';
+  if (lower.contains('club b') || lower == 'club bag') return 'No club';
+  if (lower.contains('rounds v')) return '--';
+  if (lower.contains('open stats')) return '--';
+  if (lower.contains('no estimate')) return '--';
+  return trimmed.toUpperCase();
 }
 
 String _homeGolferAsset(Map<String, dynamic> user) {
@@ -1696,6 +1943,16 @@ IconData _actionIcon(String id) {
     'play_round' => Icons.flag_outlined,
     'stats' => Icons.query_stats_outlined,
     _ => Icons.chevron_right,
+  };
+}
+
+String? _actionSubtitle(DashboardAction action) {
+  return switch (action.id) {
+    'record_swing' => 'AI Analysis',
+    'shot_tracer' => 'Track Ball Flight',
+    'play_round' => 'Scorecard',
+    'stats' => 'Performance Trends',
+    _ => action.subtitle,
   };
 }
 
