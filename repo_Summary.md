@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-14 Swing Capture Camera-First Flow
+
+- Split normal `UploadScreen` analysis mode into a camera-first pre-capture surface and a post-capture `REVIEW SWING` metadata step while preserving the existing `/capture/review` route.
+- The first Record Swing screen now mirrors the cleaner Shot Tracer camera pattern: full-height preview, close/status/timer HUD, large record button, secondary `CHOOSE VIDEO`, and no angle/club/location/upload controls before media exists.
+- Moved angle, club, location, clip quality details, retake, choose-video, and `ANALYZE SWING` upload action into the review state shown after recording or importing a video.
+- Kept video consent gating, camera recording, gallery import, upload metadata, offline upload behavior, and tracer capture behavior intact.
+- Updated widget and phase-2 simulator smoke coverage for the metadata-after-capture behavior; validated with `flutter analyze`, full `flutter test` (`84 passed`), `git diff --check`, `phase2_capture_smoke_test.dart` on the iPhone 17 Pro Max simulator, and live `dashboard_nav_smoke_test.dart`.
+
 ## 2026-06-14 Phone Shot Tracer Processing Switch
 
 - Added `SHOT_TRACER_PROCESSING_MODE=backend|phone` frontend config, `.env.example`, and README run docs; backend remains the default while `phone` enables on-device tracer processing.

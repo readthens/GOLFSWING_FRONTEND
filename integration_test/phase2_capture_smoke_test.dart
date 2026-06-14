@@ -179,12 +179,16 @@ void main() {
       auth: _ReadyAuthController(),
     );
 
+    expect(
+      find.byKey(const ValueKey('swing-capture-camera-preview')),
+      findsOneWidget,
+    );
     expect(find.text('RECORD VIDEO'), findsOneWidget);
     expect(find.text('CHOOSE VIDEO'), findsOneWidget);
-    expect(find.text('FACE ON'), findsOneWidget);
-    expect(find.text('DOWN THE LINE'), findsOneWidget);
+    expect(find.text('FACE ON'), findsNothing);
+    expect(find.text('DOWN THE LINE'), findsNothing);
     expect(find.text('REAR TRACER'), findsNothing);
-    expect(find.text('UPLOAD SWING'), findsOneWidget);
+    expect(find.text('UPLOAD SWING'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -208,10 +212,16 @@ void main() {
       'No camera is available here. Choose a saved video to keep testing.',
     );
     final recordingState = find.text('STOP RECORDING');
+    final retryState = find.text('TRY CAMERA AGAIN');
+    final openingState = find.text('OPENING CAMERA');
+    final readyState = find.text('RECORD VIDEO');
     expect(
       unavailableNotice.evaluate().isNotEmpty ||
           noCameraNotice.evaluate().isNotEmpty ||
-          recordingState.evaluate().isNotEmpty,
+          recordingState.evaluate().isNotEmpty ||
+          retryState.evaluate().isNotEmpty ||
+          openingState.evaluate().isNotEmpty ||
+          readyState.evaluate().isNotEmpty,
       isTrue,
     );
     expect(tester.takeException(), isNull);

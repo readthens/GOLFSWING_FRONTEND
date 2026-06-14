@@ -2858,7 +2858,11 @@ void main() {
     await tester.tap(recordAction);
     await tester.pumpAndSettle();
 
-    expect(find.text('GUIDED CAPTURE'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('swing-capture-camera-preview')),
+      findsOneWidget,
+    );
+    expect(find.text('RECORD VIDEO'), findsOneWidget);
   });
 
   testWidgets('shot tracer hub renders camera-first intro and visual recents', (
@@ -3679,7 +3683,7 @@ void main() {
   });
 
   testWidgets(
-    'guided capture exposes phase 2 controls and disables upload without media',
+    'guided capture opens camera-first without metadata before media',
     (WidgetTester tester) async {
       await pumpStandalone(
         tester,
@@ -3688,22 +3692,31 @@ void main() {
         apiClient: DashboardApiClient(),
       );
 
+      expect(
+        find.byKey(const ValueKey('swing-capture-camera-preview')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('swing-capture-control-bar')),
+        findsOneWidget,
+      );
       expect(find.text('RECORD VIDEO'), findsOneWidget);
       expect(find.text('CHOOSE VIDEO'), findsOneWidget);
-      expect(find.text('FACE ON'), findsOneWidget);
-      expect(find.text('DOWN THE LINE'), findsOneWidget);
-      expect(find.text('REAR TRACER'), findsNothing);
-      expect(find.text('DRIVER'), findsOneWidget);
-      expect(find.text('RANGE'), findsOneWidget);
-
-      final upload = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'UPLOAD SWING'),
+      expect(
+        find.text('Capture your swing first. Add details after recording.'),
+        findsOneWidget,
       );
-      expect(upload.onPressed, isNull);
+      expect(find.text('FACE ON'), findsNothing);
+      expect(find.text('DOWN THE LINE'), findsNothing);
+      expect(find.text('REAR TRACER'), findsNothing);
+      expect(find.text('CLUB'), findsNothing);
+      expect(find.text('LOCATION'), findsNothing);
+      expect(find.text('UPLOAD SWING'), findsNothing);
+      expect(find.text('ANALYZE SWING'), findsNothing);
     },
   );
 
-  testWidgets('guided capture uses active club bag items when available', (
+  testWidgets('guided capture hides club bag items until review', (
     WidgetTester tester,
   ) async {
     await pumpStandalone(
@@ -3714,8 +3727,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('6 IRON'), findsOneWidget);
-    expect(find.text('DRIVER'), findsOneWidget);
+    expect(find.text('6 IRON'), findsNothing);
+    expect(find.text('DRIVER'), findsNothing);
     expect(find.text('OLD WEDGE'), findsNothing);
   });
 

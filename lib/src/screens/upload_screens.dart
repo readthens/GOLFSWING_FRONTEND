@@ -163,6 +163,20 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       );
     }
 
+    if (!_isTracerMode) {
+      if (!auth.hasVideoConsent) {
+        return _buildSwingConsentScreen();
+      }
+      if (_file == null) {
+        return _buildSwingCaptureCameraScreen(auth);
+      }
+      return _buildSwingReviewScreen(
+        auth: auth,
+        qualityChecks: qualityChecks,
+        hasHardFailure: hasHardFailure,
+      );
+    }
+
     return AppScaffold(
       child: SafeArea(
         child: SingleChildScrollView(
@@ -285,6 +299,189 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                       : () => _upload(auth),
                 ),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwingConsentScreen() {
+    return AppScaffold(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IconButton(
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.go('/home'),
+              ),
+              const Text('GUIDED CAPTURE', style: AppTextStyles.title),
+              const SizedBox(height: 12),
+              Text(
+                'Capture your swing first. Add details after recording.',
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 22),
+              InfoPanel(
+                children: [
+                  const Text(
+                    'Video-processing consent is required before upload.',
+                  ),
+                  GhostButton(
+                    label: 'REVIEW CONSENT',
+                    onPressed: () => context.go('/onboarding/privacy-consent'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwingCaptureCameraScreen(AuthState auth) {
+    final handedness = auth.profile?.handedness?.toLowerCase() ?? 'right';
+    final cameraReady = _cameraController?.value.isInitialized ?? false;
+    final status = _swingCaptureStatus(cameraReady);
+    final recordEnabled = _isRecording || !_isInitializingCamera;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: _SwingCaptureCameraPreview(
+                angle: _angle,
+                cameraController: _cameraController,
+                isRecording: _isRecording,
+                status: status,
+                timer: _tracerRecordingTimerLabel,
+                cameraNotice: _cameraNotice,
+                handedness: handedness,
+                onBack: () => context.go('/home'),
+              ),
+            ),
+            _SwingCaptureControls(
+              recording: _isRecording,
+              recordEnabled: recordEnabled,
+              recordLabel: _swingCaptureRecordLabel(cameraReady),
+              status: _swingCaptureControlHint(status),
+              onRecord: _recordOrStop,
+              onChooseVideo: _pickVideo,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwingReviewScreen({
+    required AuthState auth,
+    required List<_LocalQualityCheck> qualityChecks,
+    required bool hasHardFailure,
+  }) {
+    return AppScaffold(
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              IconButton(
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _retakeSwingCapture,
+              ),
+              const Text('REVIEW SWING', style: AppTextStyles.title),
+              const SizedBox(height: 12),
+              Text(
+                'Add details to improve analysis accuracy.',
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 22),
+              _CapturePreview(
+                angle: _angle,
+                cameraController: _cameraController,
+                videoController: _videoController,
+                file: _file,
+                isRecording: _isRecording,
+                tracerMode: false,
+                tracerBallAnchor: _tracerBallAnchor,
+                tracerTargetPoint: _tracerTargetPoint,
+                tracerStyle: _tracerStyle,
+                tracerPointMode: _tracerPointMode,
+                tracerPath: const [],
+                handedness: auth.profile?.handedness?.toLowerCase() ?? 'right',
+              ),
+              const SizedBox(height: 20),
+              const Text('ANGLE', style: AppTextStyles.label),
+              const SizedBox(height: 10),
+              SegmentedChoices(
+                values: const ['face_on', 'down_the_line'],
+                selected: _angle,
+                onSelected: (value) => setState(() => _angle = value),
+              ),
+              const SizedBox(height: 18),
+              const Text('CLUB', style: AppTextStyles.label),
+              const SizedBox(height: 10),
+              SegmentedChoices(
+                values: _clubChoices,
+                selected: _club,
+                onSelected: (value) => setState(() => _club = value),
+              ),
+              const SizedBox(height: 18),
+              const Text('LOCATION', style: AppTextStyles.label),
+              const SizedBox(height: 10),
+              SegmentedChoices(
+                values: const ['range', 'course', 'indoor', 'net'],
+                selected: _locationType,
+                onSelected: (value) => setState(() => _locationType = value),
+              ),
+              const SizedBox(height: 18),
+              _buildSwingQualityPanel(qualityChecks),
+              if (_mediaNotice != null) ...[
+                const SizedBox(height: 12),
+                InfoPanel(children: [Text(_mediaNotice!)]),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                ErrorText(_error!),
+              ],
+              const SizedBox(height: 16),
+              PrimaryButton(
+                label: _isUploading ? 'UPLOADING' : 'ANALYZE SWING',
+                onPressed: hasHardFailure || _isUploading
+                    ? null
+                    : () => _upload(auth),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: GhostButton(
+                      label: 'RETAKE',
+                      onPressed: _isUploading ? null : _retakeSwingCapture,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GhostButton(
+                      label: 'CHOOSE VIDEO',
+                      onPressed: _isUploading ? null : _pickVideo,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -475,6 +672,31 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     };
   }
 
+  String _swingCaptureStatus(bool cameraReady) {
+    if (_isRecording) return 'RECORDING';
+    if (_isInitializingCamera) return 'OPENING CAMERA';
+    if (cameraReady) return 'READY';
+    if (_cameraNotice != null) return 'CAMERA UNAVAILABLE';
+    return 'RECORD SWING';
+  }
+
+  String _swingCaptureRecordLabel(bool cameraReady) {
+    if (_isRecording) return 'STOP RECORDING';
+    if (_isInitializingCamera) return 'OPENING CAMERA';
+    if (_cameraNotice != null && !cameraReady) return 'TRY CAMERA AGAIN';
+    return 'RECORD VIDEO';
+  }
+
+  String _swingCaptureControlHint(String status) {
+    return switch (status) {
+      'RECORDING' => 'KEEP THE FULL SWING IN FRAME',
+      'OPENING CAMERA' => 'PREPARING CAMERA',
+      'CAMERA UNAVAILABLE' => 'CHOOSE VIDEO TO CONTINUE',
+      'READY' => 'FACE-ON OR DOWN-THE-LINE WORKS BEST',
+      _ => 'ADD ANGLE AND CLUB AFTER CAPTURE',
+    };
+  }
+
   String get _tracerRecordingTimerLabel {
     final seconds = _tracerRecordingTenths ~/ 10;
     final tenths = _tracerRecordingTenths % 10;
@@ -539,6 +761,24 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
           ],
         ),
         const Text('Trim controls are staged for a later capture pass.'),
+        ...qualityChecks.map(
+          (check) => _QualityCheckRow(
+            severity: check.severity,
+            message: check.message,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSwingQualityPanel(List<_LocalQualityCheck> qualityChecks) {
+    return InfoPanel(
+      children: [
+        const Text('CLIP DETAILS', style: AppTextStyles.label),
+        Text('SOURCE: ${_source.toUpperCase()}'),
+        Text('SIZE: ${_formatBytes(_byteSize)}'),
+        Text('DURATION: ${_formatDuration(_durationMs)}'),
+        Text('RESOLUTION: ${_formatResolution()}'),
         ...qualityChecks.map(
           (check) => _QualityCheckRow(
             severity: check.severity,
@@ -652,6 +892,25 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       return;
     }
     await _startRecording();
+  }
+
+  Future<void> _retakeSwingCapture() async {
+    await _videoController?.dispose();
+    if (!mounted) return;
+    setState(() {
+      _file = null;
+      _videoController = null;
+      _byteSize = null;
+      _durationMs = null;
+      _resolutionWidth = null;
+      _resolutionHeight = null;
+      _mediaNotice = null;
+      _error = null;
+      _source = 'gallery';
+      _guideOverlay = false;
+      _cameraLensDirection = null;
+      _tracerRecordingTenths = 0;
+    });
   }
 
   Future<void> _retakeTracerCapture() async {
@@ -771,7 +1030,6 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   }
 
   void _startTracerRecordingClock() {
-    if (!_isTracerMode) return;
     _tracerRecordingTimer?.cancel();
     _tracerRecordingTimer = Timer.periodic(const Duration(milliseconds: 100), (
       _,
@@ -779,7 +1037,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       if (!mounted || !_isRecording) return;
       setState(() {
         _tracerRecordingTenths += 1;
-        if (!_usesPhoneTracerProcessing && _tracerRecordingTenths >= 18) {
+        if (_isTracerMode &&
+            !_usesPhoneTracerProcessing &&
+            _tracerRecordingTenths >= 18) {
           _tracerImpactWindowActive = true;
         }
       });
@@ -1700,6 +1960,376 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     if (Platform.isAndroid) return 'android';
     if (Platform.isMacOS) return 'macos';
     return 'unknown';
+  }
+}
+
+class _SwingCaptureCameraPreview extends StatelessWidget {
+  const _SwingCaptureCameraPreview({
+    required this.angle,
+    required this.cameraController,
+    required this.isRecording,
+    required this.status,
+    required this.timer,
+    required this.cameraNotice,
+    required this.handedness,
+    required this.onBack,
+  });
+
+  final String angle;
+  final CameraController? cameraController;
+  final bool isRecording;
+  final String status;
+  final String timer;
+  final String? cameraNotice;
+  final String handedness;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final cameraReady = cameraController?.value.isInitialized ?? false;
+    return ClipRect(
+      key: const ValueKey('swing-capture-camera-preview'),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Colors.black),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (cameraReady)
+              CameraPreview(cameraController!)
+            else
+              const _SwingCameraPlaceholder(),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xB8000000),
+                    Color(0x10000000),
+                    Color(0xD8000000),
+                  ],
+                  stops: [0, 0.5, 1],
+                ),
+              ),
+            ),
+            CustomPaint(
+              painter: _SwingCaptureGuidePainter(
+                angle: angle,
+                isRecording: isRecording,
+                handedness: handedness,
+                dimmed: !cameraReady,
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              top: 10,
+              child: _SwingCaptureHud(
+                status: status,
+                timer: timer,
+                recording: isRecording,
+                onBack: onBack,
+              ),
+            ),
+            Positioned(
+              left: 22,
+              right: 22,
+              bottom: 22,
+              child: _SwingCaptureTip(
+                message:
+                    cameraNotice ??
+                    'Capture your swing first. Add details after recording.',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SwingCameraPlaceholder extends StatelessWidget {
+  const _SwingCameraPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.videocam_outlined,
+            size: 54,
+            color: AppColors.textSecondary.withValues(alpha: 0.72),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Record swing',
+            style: AppTextStyles.label.copyWith(
+              color: AppColors.textPrimary,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SwingCaptureHud extends StatelessWidget {
+  const _SwingCaptureHud({
+    required this.status,
+    required this.timer,
+    required this.recording,
+    required this.onBack,
+  });
+
+  final String status;
+  final String timer;
+  final bool recording;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          key: const ValueKey('swing-capture-back'),
+          tooltip: 'Back',
+          onPressed: onBack,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.black.withValues(alpha: 0.5),
+            foregroundColor: AppColors.textPrimary,
+          ),
+          icon: const Icon(Icons.close),
+        ),
+        Expanded(
+          child: Center(
+            child: Text(
+              timer,
+              style: AppTextStyles.title.copyWith(
+                fontSize: 24,
+                height: 1,
+                letterSpacing: 1.4,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        _SwingCapturePill(label: recording ? 'REC' : status, active: recording),
+      ],
+    );
+  }
+}
+
+class _SwingCapturePill extends StatelessWidget {
+  const _SwingCapturePill({required this.label, required this.active});
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: const ValueKey('swing-capture-status-pill'),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: active ? const Color(0x88FF5B5B) : const Color(0x24FFFFFF),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Text(
+          label,
+          style: AppTextStyles.micro.copyWith(
+            color: active ? AppColors.signalRed : AppColors.textPrimary,
+            fontSize: 10,
+            letterSpacing: 0.9,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
+}
+
+class _SwingCaptureTip extends StatelessWidget {
+  const _SwingCaptureTip({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0x24FFFFFF)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: AppTextStyles.body.copyWith(
+            color: AppColors.textSecondary,
+            fontSize: 12,
+            height: 1.35,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwingCaptureControls extends StatelessWidget {
+  const _SwingCaptureControls({
+    required this.recording,
+    required this.recordEnabled,
+    required this.recordLabel,
+    required this.status,
+    required this.onRecord,
+    required this.onChooseVideo,
+  });
+
+  final bool recording;
+  final bool recordEnabled;
+  final String recordLabel;
+  final String status;
+  final VoidCallback onRecord;
+  final VoidCallback onChooseVideo;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return DecoratedBox(
+      key: const ValueKey('swing-capture-control-bar'),
+      decoration: const BoxDecoration(
+        color: Color(0xFF050505),
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          22,
+          16,
+          22,
+          math.max(18.0, bottomInset + 14.0),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _CameraRecordButton(
+              recording: recording,
+              enabled: recordEnabled,
+              onPressed: onRecord,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              recordLabel,
+              style: AppTextStyles.label.copyWith(
+                color: recordEnabled
+                    ? AppColors.textPrimary
+                    : AppColors.textMuted,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              status,
+              style: AppTextStyles.micro.copyWith(
+                color: AppColors.textMuted,
+                letterSpacing: 0.8,
+              ),
+            ),
+            const SizedBox(height: 14),
+            GhostButton(
+              label: 'CHOOSE VIDEO',
+              onPressed: recording ? null : onChooseVideo,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SwingCaptureGuidePainter extends CustomPainter {
+  const _SwingCaptureGuidePainter({
+    required this.angle,
+    required this.isRecording,
+    required this.handedness,
+    required this.dimmed,
+  });
+
+  final String angle;
+  final bool isRecording;
+  final String handedness;
+  final bool dimmed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final opacity = (dimmed ? 0.42 : 1.0) * (isRecording ? 0.55 : 1.0);
+    final guidePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.22 * opacity)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final accentPaint = Paint()
+      ..color = AppColors.signalGreen.withValues(alpha: 0.24 * opacity)
+      ..strokeWidth = 1.1
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final frame = Rect.fromCenter(
+      center: Offset(size.width * 0.5, size.height * 0.52),
+      width: size.width * 0.58,
+      height: size.height * 0.5,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(frame, const Radius.circular(12)),
+      guidePaint,
+    );
+    if (angle == 'face_on') {
+      canvas.drawLine(
+        Offset(size.width * 0.5, size.height * 0.2),
+        Offset(size.width * 0.5, size.height * 0.82),
+        guidePaint,
+      );
+      canvas.drawLine(
+        Offset(size.width * 0.22, size.height * 0.76),
+        Offset(size.width * 0.78, size.height * 0.76),
+        accentPaint,
+      );
+    } else {
+      final start = Offset(size.width * 0.24, size.height * 0.78);
+      final end = Offset(size.width * 0.78, size.height * 0.38);
+      canvas.drawLine(start, end, accentPaint);
+      canvas.drawLine(
+        Offset(size.width * 0.5, size.height * 0.22),
+        Offset(size.width * 0.5, size.height * 0.82),
+        guidePaint,
+      );
+    }
+    final stancePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08 * opacity)
+      ..style = PaintingStyle.fill;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width * 0.5, size.height * 0.82),
+        width: size.width * 0.5,
+        height: 18,
+      ),
+      stancePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SwingCaptureGuidePainter oldDelegate) {
+    return oldDelegate.angle != angle ||
+        oldDelegate.isRecording != isRecording ||
+        oldDelegate.handedness != handedness ||
+        oldDelegate.dimmed != dimmed;
   }
 }
 
