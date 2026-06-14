@@ -13,18 +13,48 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(baseUrl: apiBaseUrl);
 });
 
+class ApiTokenPair {
+  const ApiTokenPair({required this.accessToken, required this.refreshToken});
+
+  final String accessToken;
+  final String refreshToken;
+}
+
+typedef ApiTokenReader = ApiTokenPair? Function();
+typedef ApiTokenSaver = Future<void> Function(AuthPayload payload);
+typedef ApiAuthFailureHandler = Future<void> Function();
+
 class ApiClient {
-  ApiClient({required String baseUrl})
+  ApiClient({required String baseUrl, HttpClientAdapter? httpClientAdapter})
     : _dio = Dio(
         BaseOptions(
           baseUrl: baseUrl,
           connectTimeout: const Duration(seconds: 10),
         ),
       ),
-      _rawDio = Dio();
+      _rawDio = Dio() {
+    if (httpClientAdapter != null) {
+      _dio.httpClientAdapter = httpClientAdapter;
+    }
+    _dio.interceptors.add(InterceptorsWrapper(onError: _handleAuthError));
+  }
 
   final Dio _dio;
   final Dio _rawDio;
+  ApiTokenReader? _readTokens;
+  ApiTokenSaver? _saveRefreshedTokens;
+  ApiAuthFailureHandler? _handleAuthFailure;
+  Future<AuthPayload>? _refreshFuture;
+
+  void configureAuthSession({
+    required ApiTokenReader readTokens,
+    required ApiTokenSaver saveTokens,
+    required ApiAuthFailureHandler onAuthFailure,
+  }) {
+    _readTokens = readTokens;
+    _saveRefreshedTokens = saveTokens;
+    _handleAuthFailure = onAuthFailure;
+  }
 
   Future<AuthPayload> register({
     required String email,
@@ -33,6 +63,14 @@ class ApiClient {
     final response = await _dio.post(
       '/v1/auth/register',
       data: {'email': email, 'password': password},
+    );
+    return AuthPayload.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<AuthPayload> refresh({required String refreshToken}) async {
+    final response = await _dio.post(
+      '/v1/auth/refresh',
+      data: {'refresh_token': refreshToken},
     );
     return AuthPayload.fromJson(response.data as Map<String, dynamic>);
   }
@@ -659,6 +697,19 @@ class ApiClient {
     }
   }
 
+  Future<TracerResult> createLocalTracerResult({
+    required String accessToken,
+    required String sessionId,
+    required Map<String, dynamic> payload,
+  }) async {
+    final response = await _dio.post(
+      '/v1/swing-sessions/$sessionId/tracer-result/local',
+      data: payload,
+      options: _auth(accessToken),
+    );
+    return TracerResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<TracerEdit> saveTracerEdit({
     required String accessToken,
     required String resultId,
@@ -836,11 +887,90 @@ class ApiClient {
   }
 
   Options _auth(String token, {String? idempotencyKey}) {
-    final headers = <String, String>{'Authorization': 'Bearer $token'};
+    final effectiveToken = _readTokens?.call()?.accessToken ?? token;
+    final headers = <String, String>{'Authorization': 'Bearer $effectiveToken'};
     if (idempotencyKey != null) {
       headers['Idempotency-Key'] = idempotencyKey;
     }
     return Options(headers: headers);
+  }
+
+  Future<void> _handleAuthError(
+    DioException error,
+    ErrorInterceptorHandler handler,
+  ) async {
+    if (!_shouldRefresh(error)) {
+      handler.next(error);
+      return;
+    }
+
+    late final AuthPayload payload;
+    try {
+      payload = await _refreshAuthSession();
+    } catch (_) {
+      await _handleAuthFailure?.call();
+      handler.next(error);
+      return;
+    }
+
+    final requestOptions = error.requestOptions;
+    requestOptions.extra['_auth_retry'] = true;
+    requestOptions.headers['Authorization'] = 'Bearer ${payload.accessToken}';
+    try {
+      handler.resolve(await _dio.fetch<dynamic>(requestOptions));
+    } on DioException catch (retryError) {
+      handler.next(retryError);
+    } catch (_) {
+      handler.next(error);
+    }
+  }
+
+  bool _shouldRefresh(DioException error) {
+    if (error.response?.statusCode != 401) return false;
+    final requestOptions = error.requestOptions;
+    if (requestOptions.extra['_auth_retry'] == true) return false;
+    if (_isAuthEndpoint(requestOptions.path)) return false;
+    if (!_hasBearerAuth(requestOptions.headers)) return false;
+    final tokens = _readTokens?.call();
+    return tokens != null && tokens.refreshToken.isNotEmpty;
+  }
+
+  Future<AuthPayload> _refreshAuthSession() async {
+    final existing = _refreshFuture;
+    if (existing != null) return existing;
+    final tokens = _readTokens?.call();
+    if (tokens == null || tokens.refreshToken.isEmpty) {
+      throw StateError('No refresh token is available.');
+    }
+
+    final task = () async {
+      final payload = await refresh(refreshToken: tokens.refreshToken);
+      await _saveRefreshedTokens?.call(payload);
+      return payload;
+    }();
+    _refreshFuture = task;
+    try {
+      return await task;
+    } finally {
+      if (identical(_refreshFuture, task)) {
+        _refreshFuture = null;
+      }
+    }
+  }
+
+  bool _isAuthEndpoint(String path) {
+    final uri = Uri.tryParse(path);
+    final normalizedPath = uri?.path ?? path;
+    return normalizedPath.startsWith('/v1/auth/');
+  }
+
+  bool _hasBearerAuth(Map<String, dynamic> headers) {
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() != 'authorization') continue;
+      final value = entry.value?.toString() ?? '';
+      return value.toLowerCase().startsWith('bearer ');
+    }
+    return false;
   }
 
   String? _stepKey(String? baseKey, String step) =>

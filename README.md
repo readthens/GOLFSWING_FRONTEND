@@ -25,6 +25,17 @@ flutter run --dart-define=API_BASE_URL=http://localhost:8000
 For an iOS simulator talking to a host-machine backend, keep `localhost`. For a
 physical device, pass the host machine LAN IP as `API_BASE_URL`.
 
+Shot Tracer processing defaults to backend jobs. To use the on-phone tracer path
+instead, build or run with:
+
+```bash
+flutter run \
+  --dart-define=API_BASE_URL=http://localhost:8000 \
+  --dart-define=SHOT_TRACER_PROCESSING_MODE=phone
+```
+
+Use `SHOT_TRACER_PROCESSING_MODE=backend` to keep server-side tracer jobs.
+
 ## Validate
 
 ```bash

@@ -304,6 +304,7 @@ class _TracerVideoSurface extends ConsumerStatefulWidget {
 
 class _TracerVideoSurfaceState extends ConsumerState<_TracerVideoSurface> {
   VideoPlayerController? _controller;
+  File? _tempVideoFile;
   bool _isLoading = true;
   String? _notice;
 
@@ -324,12 +325,14 @@ class _TracerVideoSurfaceState extends ConsumerState<_TracerVideoSurface> {
 
   @override
   void dispose() {
-    _controller?.dispose();
+    unawaited(_controller?.dispose());
+    unawaited(_deleteTempVideo());
     super.dispose();
   }
 
   Future<void> _prepare() async {
     await _controller?.dispose();
+    await _deleteTempVideo();
     _controller = null;
     setState(() {
       _isLoading = true;
@@ -344,15 +347,16 @@ class _TracerVideoSurfaceState extends ConsumerState<_TracerVideoSurface> {
     }
     try {
       final directory = await getTemporaryDirectory();
-      final path = '${directory.path}/tracer_${widget.result.id}.mp4';
+      final file = File('${directory.path}/tracer_${widget.result.id}.mp4');
+      _tempVideoFile = file;
       await ref
           .read(apiClientProvider)
           .downloadTracerVideoFile(
             accessToken: widget.accessToken,
             resultId: widget.result.id,
-            destinationPath: path,
+            destinationPath: file.path,
           );
-      final controller = VideoPlayerController.file(File(path));
+      final controller = VideoPlayerController.file(file);
       await controller.initialize();
       await controller.setLooping(true);
       if (!mounted) {
@@ -371,6 +375,17 @@ class _TracerVideoSurfaceState extends ConsumerState<_TracerVideoSurface> {
             'Rendered tracer video is ready. Preview is unavailable in this environment.';
       });
     }
+  }
+
+  Future<void> _deleteTempVideo() async {
+    final file = _tempVideoFile;
+    _tempVideoFile = null;
+    if (file == null) return;
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
 
   @override

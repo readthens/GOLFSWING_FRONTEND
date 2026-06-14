@@ -6,11 +6,17 @@ import 'package:dio/dio.dart';
 import '../api/api_client.dart';
 import '../billing/revenuecat_service.dart';
 import '../models.dart';
+import '../offline/local_private_cache.dart';
+import '../offline/offline_queue.dart';
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>((ref) {
   final controller = AuthController(
     ref.read(apiClientProvider),
     revenueCat: ref.read(revenueCatServiceProvider),
+    localSessionCleanup: () async {
+      await ref.read(offlineQueueProvider).clear();
+      await clearLocalPrivateCaches();
+    },
   );
   controller.restore();
   return controller;
@@ -75,13 +81,25 @@ class AuthState {
 }
 
 class AuthController extends ChangeNotifier {
-  AuthController(this._api, {RevenueCatService? revenueCat})
-    : _revenueCat = revenueCat ?? RevenueCatService();
+  AuthController(
+    this._api, {
+    RevenueCatService? revenueCat,
+    Future<void> Function()? localSessionCleanup,
+  }) : _revenueCat = revenueCat ?? RevenueCatService(),
+       _localSessionCleanup = localSessionCleanup {
+    _api.configureAuthSession(
+      readTokens: _readTokenPair,
+      saveTokens: _storeRefreshedPayload,
+      onAuthFailure: _handleAuthFailure,
+    );
+  }
 
   final ApiClient _api;
   final RevenueCatService _revenueCat;
+  final Future<void> Function()? _localSessionCleanup;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   AuthState state = const AuthState(isRestoring: true);
+  Future<void>? _authFailureCleanup;
 
   Future<void> restore() async {
     try {
@@ -96,37 +114,42 @@ class AuthController extends ChangeNotifier {
         notifyListeners();
         return;
       }
+      state = state.copyWith(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
       final me = await _api.getMe(accessToken);
       final consents = await _api.getConsents(accessToken);
       await _configureBilling(me.user.id);
+      final restoredAccessToken = state.accessToken ?? accessToken;
+      final restoredRefreshToken = state.refreshToken ?? refreshToken;
       state = AuthState(
         isRestoring: false,
         isLoading: false,
         user: me.user,
         profile: me.profile,
-        accessToken: accessToken,
-        refreshToken: refreshToken,
+        accessToken: restoredAccessToken,
+        refreshToken: restoredRefreshToken,
         hasVideoConsent: consents.any(
           (consent) => consent.consentType == 'video_processing',
         ),
       );
     } catch (_) {
-      await _storage.deleteAll();
-      state = state.copyWith(
-        isRestoring: false,
-        isLoading: false,
-        clearSession: true,
-      );
+      await _clearLocalSession(clearLocalData: true);
     }
     notifyListeners();
   }
 
   Future<void> register(String email, String password) async {
-    await _authenticate(() => _api.register(email: email, password: password));
+    await _authenticate(
+      () => _api.register(email: email.trim(), password: password),
+    );
   }
 
   Future<void> login(String email, String password) async {
-    await _authenticate(() => _api.login(email: email, password: password));
+    await _authenticate(
+      () => _api.login(email: email.trim(), password: password),
+    );
   }
 
   Future<void> loginWithApple({
@@ -186,12 +209,7 @@ class AuthController extends ChangeNotifier {
         // Local logout must still clear credentials if the API is unreachable.
       }
     }
-    await _storage.deleteAll();
-    state = state.copyWith(
-      isLoading: false,
-      clearSession: true,
-      clearError: true,
-    );
+    await _clearLocalSession(clearLocalData: true);
     notifyListeners();
   }
 
@@ -202,12 +220,7 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
     try {
       await _api.deleteAccount(token);
-      await _storage.deleteAll();
-      state = state.copyWith(
-        isLoading: false,
-        clearSession: true,
-        clearError: true,
-      );
+      await _clearLocalSession(clearLocalData: true);
     } catch (error) {
       state = state.copyWith(isLoading: false, error: _message(error));
     }
@@ -244,6 +257,64 @@ class AuthController extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  ApiTokenPair? _readTokenPair() {
+    final accessToken = state.accessToken;
+    final refreshToken = state.refreshToken;
+    if (accessToken == null || refreshToken == null) return null;
+    return ApiTokenPair(accessToken: accessToken, refreshToken: refreshToken);
+  }
+
+  Future<void> _storeRefreshedPayload(AuthPayload payload) async {
+    await _storage.write(key: 'access_token', value: payload.accessToken);
+    await _storage.write(key: 'refresh_token', value: payload.refreshToken);
+    await _configureBilling(payload.user.id);
+    state = state.copyWith(
+      user: payload.user,
+      accessToken: payload.accessToken,
+      refreshToken: payload.refreshToken,
+      clearError: true,
+    );
+    notifyListeners();
+  }
+
+  Future<void> _handleAuthFailure() async {
+    final existing = _authFailureCleanup;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+    final cleanup = () async {
+      await _clearLocalSession(
+        clearLocalData: true,
+        error: 'Session expired. Sign in again.',
+      );
+      notifyListeners();
+    }();
+    _authFailureCleanup = cleanup;
+    try {
+      await cleanup;
+    } finally {
+      _authFailureCleanup = null;
+    }
+  }
+
+  Future<void> _clearLocalSession({
+    bool clearLocalData = false,
+    String? error,
+  }) async {
+    await _storage.deleteAll();
+    if (clearLocalData) {
+      await _localSessionCleanup?.call();
+    }
+    state = state.copyWith(
+      isRestoring: false,
+      isLoading: false,
+      clearSession: true,
+      clearError: error == null,
+      error: error,
+    );
   }
 
   Future<void> _configureBilling(String userId) async {

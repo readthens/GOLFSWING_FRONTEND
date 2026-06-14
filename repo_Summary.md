@@ -1,5 +1,24 @@
 # Frontend Repo Summary
 
+## 2026-06-14 Phone Shot Tracer Processing Switch
+
+- Added `SHOT_TRACER_PROCESSING_MODE=backend|phone` frontend config, `.env.example`, and README run docs; backend remains the default while `phone` enables on-device tracer processing.
+- Wired phone mode into guided Shot Tracer capture: native high-FPS capture receives ball/target guide setup, Flutter polls native diagnostics while recording, and the HUD now follows native `waiting_for_impact` / `impact_detected` / `tracking_live` / `tracking_complete` states.
+- Added live local tracer path drawing to the camera guide overlay and phone-mode upload gating so a backend tracer job is not used when the env switch is set to phone.
+- Synced phone-generated tracer results after upload through `createLocalTracerResult`, and carried the same payload through offline upload retry.
+- Extended the iOS `NativeCaptureBridge` frame-sample path with a dependency-free local bright-ball/impact tracker that records full video until stop while exposing normalized local path diagnostics.
+- Validated with `flutter analyze`, full `flutter test` (`84 passed`), `flutter build ios --simulator --debug`, and `git diff --check`.
+
+## 2026-06-14 Security Auth Cache Hardening
+
+- Added centralized Dio 401 refresh/retry support with single-flight refresh locking, refreshed token persistence, and local session cleanup on unrecoverable auth failure.
+- Removed committed default debug login credentials; the local test autofill now appears only when explicit `DEV_LOGIN_EMAIL` and `DEV_LOGIN_PASSWORD` dart-defines are supplied.
+- User-scoped offline queue items with `owner_user_id`, owner-filtered sync center/retry behavior, and retained upload-file deletion on retry success, remove, clear, and logout/account cleanup.
+- Added local private-cache cleanup for logout/account deletion/refresh failure: offline queue data, retained queued upload videos, deterministic playback temp videos, and Flutter image cache.
+- Updated upload, favorite, scorecard, auto-sync, profile, and sync-center call sites to enqueue/retry only the current user's offline work; playback surfaces also delete temp videos on dispose/update.
+- Added regression coverage for token refresh retry, owner-scoped offline retry, retained upload cleanup, and the hidden-by-default debug credential button.
+- Validated with `flutter analyze`, full `flutter test` (`83 passed`), and `git diff --check`.
+
 ## 2026-06-14 Shot Tracer Smart Guidance Overlay
 
 - Replaced the camera-first Shot Tracer overlay drawing with a premium smart guidance system: softened golfer ghost guide, subtle target guide line, ball anchor marker, target marker, labels, and dimmed fallback rendering.

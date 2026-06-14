@@ -29,7 +29,7 @@ import UIKit
       case "getCaptureCapabilities":
         result(self.nativeCaptureBridge.getCaptureCapabilities())
       case "startTracerCapture":
-        self.nativeCaptureBridge.startTracerCapture(result: result)
+        self.nativeCaptureBridge.startTracerCapture(arguments: call.arguments, result: result)
       case "stopTracerCapture":
         self.nativeCaptureBridge.stopTracerCapture(result: result)
       case "getCurrentCaptureDiagnostics":
@@ -58,6 +58,7 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
   private var lastSampleTime: CMTime?
   private var recordingStartedAt: Date?
   private var lastError: String?
+  private var localTracer = NativeTracerState()
 
   func getCaptureCapabilities() -> [String: Any] {
     let formats = supportedFormats()
@@ -78,7 +79,7 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
     ]
   }
 
-  func startTracerCapture(result: @escaping FlutterResult) {
+  func startTracerCapture(arguments: Any?, result: @escaping FlutterResult) {
     sessionQueue.async {
       if self.movieOutput?.isRecording == true {
         DispatchQueue.main.async {
@@ -91,7 +92,7 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
         guard let session = self.session, let movieOutput = self.movieOutput else {
           throw NativeCaptureError.configurationFailed("Native capture session was not created.")
         }
-        self.resetSampleCounters()
+        self.resetSampleCounters(arguments: arguments)
         if !session.isRunning {
           session.startRunning()
         }
@@ -158,9 +159,11 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
       var diagnostics = self.baseDiagnostics()
       diagnostics["isRecording"] = false
       diagnostics["lastError"] = self.lastError as Any
+      let localResult = diagnostics["localTracerResult"] as? [String: Any] ?? [:]
       let payload: [String: Any] = [
         "filePath": outputFileURL.path,
-        "diagnostics": diagnostics
+        "diagnostics": diagnostics,
+        "localResult": localResult
       ]
       DispatchQueue.main.async {
         if let error {
@@ -186,6 +189,7 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
     }
     lastSampleTime = timestamp
     sampleCount += 1
+    updateLocalTracer(sampleBuffer: sampleBuffer, timestamp: timestamp)
   }
 
   func captureOutput(
@@ -259,6 +263,83 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
     device.unlockForConfiguration()
   }
 
+  private func updateLocalTracer(sampleBuffer: CMSampleBuffer, timestamp: CMTime) {
+    guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+      return
+    }
+    let frameTimestampMs = timestampMs(timestamp) ?? 0
+    if let candidate = brightCandidate(in: pixelBuffer, timestampMs: frameTimestampMs) {
+      localTracer.update(candidate: candidate, sampleCount: sampleCount)
+    } else if localTracer.impactTimestampMs == nil {
+      localTracer.trackingState = "waiting_for_impact"
+    }
+  }
+
+  private func brightCandidate(in pixelBuffer: CVPixelBuffer, timestampMs: Int) -> NativeTracerPoint? {
+    CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+    let planeCount = CVPixelBufferGetPlaneCount(pixelBuffer)
+    let width = planeCount > 0 ? CVPixelBufferGetWidthOfPlane(pixelBuffer, 0) : CVPixelBufferGetWidth(pixelBuffer)
+    let height = planeCount > 0 ? CVPixelBufferGetHeightOfPlane(pixelBuffer, 0) : CVPixelBufferGetHeight(pixelBuffer)
+    let bytesPerRow: Int
+    let baseAddress: UnsafeMutableRawPointer?
+    if planeCount > 0 {
+      bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
+      baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0)
+    } else {
+      bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+      baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer)
+    }
+    guard width > 0, height > 0, bytesPerRow > 0, let baseAddress else {
+      return nil
+    }
+
+    let anchor = localTracer.guide.ballAnchor
+    let previous = localTracer.ballPath.last ?? localTracer.lastCandidate
+    let centerX = localTracer.impactTimestampMs == nil ? Double(anchor.x) : (previous?.x ?? Double(anchor.x))
+    let centerY = localTracer.impactTimestampMs == nil ? Double(anchor.y) : (previous?.y ?? Double(anchor.y))
+    let radiusX = localTracer.impactTimestampMs == nil ? 0.16 : 0.28
+    let radiusY = localTracer.impactTimestampMs == nil ? 0.16 : 0.28
+    let minX = max(0, Int((centerX - radiusX) * Double(width)))
+    let maxX = min(width - 1, Int((centerX + radiusX) * Double(width)))
+    let minY = max(0, Int((centerY - radiusY) * Double(height)))
+    let maxY = min(height - 1, Int((centerY + radiusY) * Double(height)))
+    guard minX < maxX, minY < maxY else {
+      return nil
+    }
+
+    let stride = max(2, min(width, height) / 120)
+    let buffer = baseAddress.assumingMemoryBound(to: UInt8.self)
+    var bestValue = 0
+    var bestX = minX
+    var bestY = minY
+    var y = minY
+    while y <= maxY {
+      let row = buffer + y * bytesPerRow
+      var x = minX
+      while x <= maxX {
+        let value = Int(row[x])
+        if value > bestValue {
+          bestValue = value
+          bestX = x
+          bestY = y
+        }
+        x += stride
+      }
+      y += stride
+    }
+    guard bestValue >= 185 else {
+      return nil
+    }
+    return NativeTracerPoint(
+      x: Double(bestX) / Double(width),
+      y: Double(bestY) / Double(height),
+      timestampMs: timestampMs,
+      confidence: min(1.0, Double(bestValue) / 255.0)
+    )
+  }
+
   private func selectedCaptureFormat() throws -> NativeCaptureFormat {
     guard let format = supportedFormats().first else {
       throw NativeCaptureError.configurationFailed("No rear high-FPS capture format is available.")
@@ -314,19 +395,20 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
   private func baseDiagnostics() -> [String: Any] {
     let counts = sampleQueue.sync {
       (
-        sampleCount,
-        droppedFrameCount,
-        firstSampleTime,
-        lastSampleTime
+        sampleCount: sampleCount,
+        droppedFrameCount: droppedFrameCount,
+        firstSampleTime: firstSampleTime,
+        lastSampleTime: lastSampleTime,
+        localTracer: localTracer.toDictionary()
       )
     }
     let measuredFps = measuredFramesPerSecond(
-      sampleCount: counts.0,
-      firstSampleTime: counts.2,
-      lastSampleTime: counts.3
+      sampleCount: counts.sampleCount,
+      firstSampleTime: counts.firstSampleTime,
+      lastSampleTime: counts.lastSampleTime
     )
     let format = selectedFormat
-    return [
+    var diagnostics: [String: Any] = [
       "source": "avfoundation",
       "deviceModel": deviceModelIdentifier(),
       "systemVersion": UIDevice.current.systemVersion,
@@ -344,20 +426,28 @@ final class NativeCaptureBridge: NSObject, AVCaptureFileOutputRecordingDelegate,
       "whiteBalanceLocked": selectedDevice?.whiteBalanceMode == .locked,
       "exposureDurationSeconds": selectedDevice?.exposureDuration.seconds as Any,
       "iso": selectedDevice?.iso as Any,
-      "sampleCount": counts.0,
-      "droppedFrameCount": counts.1,
-      "firstFrameTimestampMs": timestampMs(counts.2) as Any,
-      "lastFrameTimestampMs": timestampMs(counts.3) as Any,
+      "sampleCount": counts.sampleCount,
+      "droppedFrameCount": counts.droppedFrameCount,
+      "firstFrameTimestampMs": timestampMs(counts.firstSampleTime) as Any,
+      "lastFrameTimestampMs": timestampMs(counts.lastSampleTime) as Any,
       "startedAtMs": recordingStartedAt.map { Int($0.timeIntervalSince1970 * 1000) } as Any
     ]
+    diagnostics["localTracerResult"] = counts.localTracer
+    diagnostics["trackingState"] = counts.localTracer["trackingState"]
+    diagnostics["impactTimestampMs"] = counts.localTracer["impactTimestampMs"]
+    diagnostics["confidence"] = counts.localTracer["confidence"]
+    diagnostics["ballPath"] = counts.localTracer["ballPath"]
+    return diagnostics
   }
 
-  private func resetSampleCounters() {
+  private func resetSampleCounters(arguments: Any?) {
+    let guide = NativeTracerGuide(arguments: arguments)
     sampleQueue.sync {
       sampleCount = 0
       droppedFrameCount = 0
       firstSampleTime = nil
       lastSampleTime = nil
+      localTracer = NativeTracerState(guide: guide)
     }
   }
 
@@ -472,6 +562,156 @@ private struct NativeCaptureFormat {
       "deviceType": device.deviceType.rawValue,
       "localizedName": device.localizedName
     ]
+  }
+}
+
+private struct NativeTracerGuide {
+  let ballAnchor: CGPoint
+  let targetPoint: CGPoint
+
+  init(arguments: Any? = nil) {
+    let payload = arguments as? [String: Any] ?? [:]
+    let ballPayload = payload["ball_anchor"] as? [String: Any] ?? [:]
+    let targetLine = payload["target_line"] as? [String: Any] ?? [:]
+    let targetPayload = targetLine["end"] as? [String: Any] ?? [:]
+    ballAnchor = CGPoint(
+      x: CGFloat(NativeTracerGuide.normalized(ballPayload["x"], fallback: 0.5)),
+      y: CGFloat(NativeTracerGuide.normalized(ballPayload["y"], fallback: 0.78))
+    )
+    targetPoint = CGPoint(
+      x: CGFloat(NativeTracerGuide.normalized(targetPayload["x"], fallback: 0.5)),
+      y: CGFloat(NativeTracerGuide.normalized(targetPayload["y"], fallback: 0.28))
+    )
+  }
+
+  private static func normalized(_ value: Any?, fallback: Double) -> Double {
+    let number: Double
+    if let value = value as? Double {
+      number = value
+    } else if let value = value as? NSNumber {
+      number = value.doubleValue
+    } else if let value = value as? String, let parsed = Double(value) {
+      number = parsed
+    } else {
+      number = fallback
+    }
+    return min(1.0, max(0.0, number))
+  }
+}
+
+private struct NativeTracerPoint {
+  let x: Double
+  let y: Double
+  let timestampMs: Int
+  let confidence: Double
+
+  func distance(to point: CGPoint) -> Double {
+    let dx = x - Double(point.x)
+    let dy = y - Double(point.y)
+    return sqrt(dx * dx + dy * dy)
+  }
+
+  func distance(to point: NativeTracerPoint) -> Double {
+    let dx = x - point.x
+    let dy = y - point.y
+    return sqrt(dx * dx + dy * dy)
+  }
+
+  func toDictionary() -> [String: Any] {
+    [
+      "x": round(x * 10_000) / 10_000,
+      "y": round(y * 10_000) / 10_000,
+      "timestamp_ms": timestampMs,
+      "confidence": round(confidence * 1_000) / 1_000
+    ]
+  }
+}
+
+private struct NativeTracerState {
+  var guide = NativeTracerGuide()
+  var trackingState = "idle"
+  var impactTimestampMs: Int?
+  var ballPath: [NativeTracerPoint] = []
+  var lastCandidate: NativeTracerPoint?
+
+  init(guide: NativeTracerGuide = NativeTracerGuide()) {
+    self.guide = guide
+    trackingState = "waiting_for_impact"
+  }
+
+  mutating func update(candidate: NativeTracerPoint, sampleCount: Int) {
+    lastCandidate = candidate
+    if impactTimestampMs == nil {
+      trackingState = "waiting_for_impact"
+      guard sampleCount >= 8 else {
+        return
+      }
+      if candidate.distance(to: guide.ballAnchor) >= 0.035 {
+        impactTimestampMs = candidate.timestampMs
+        trackingState = "impact_detected"
+        ballPath = [
+          NativeTracerPoint(
+            x: Double(guide.ballAnchor.x),
+            y: Double(guide.ballAnchor.y),
+            timestampMs: max(0, candidate.timestampMs - 12),
+            confidence: candidate.confidence
+          ),
+          candidate
+        ]
+      }
+      return
+    }
+
+    guard let impactTimestampMs else {
+      return
+    }
+    let elapsed = candidate.timestampMs - impactTimestampMs
+    if elapsed > 1_400 {
+      trackingState = "tracking_complete"
+      return
+    }
+    if let lastPoint = ballPath.last {
+      let enoughTime = candidate.timestampMs - lastPoint.timestampMs >= 24
+      let enoughDistance = candidate.distance(to: lastPoint) >= 0.01
+      if !enoughTime && !enoughDistance {
+        trackingState = "tracking_live"
+        return
+      }
+    }
+    ballPath.append(candidate)
+    if ballPath.count > 70 {
+      ballPath.removeFirst(ballPath.count - 70)
+    }
+    trackingState = "tracking_live"
+  }
+
+  func toDictionary() -> [String: Any] {
+    let confidences = ballPath.map { $0.confidence }
+    let confidence: Double? = confidences.isEmpty
+      ? nil
+      : confidences.reduce(0, +) / Double(confidences.count)
+    var payload: [String: Any] = [
+      "trackingState": trackingState,
+      "tracking_state": trackingState,
+      "ballPath": ballPath.map { $0.toDictionary() },
+      "ball_path": ballPath.map { $0.toDictionary() },
+      "metrics": [
+        "path_source": "client_phone",
+        "processing_mode": "phone",
+        "detector_version": "phone_local_v1",
+        "visual_only": true,
+        "not_launch_monitor": true
+      ],
+      "style": ["name": "signature"]
+    ]
+    if let impactTimestampMs {
+      payload["impactTimestampMs"] = impactTimestampMs
+      payload["impact_timestamp_ms"] = impactTimestampMs
+    }
+    if let confidence {
+      payload["confidence"] = round(confidence * 1_000) / 1_000
+    }
+    return payload
   }
 }
 

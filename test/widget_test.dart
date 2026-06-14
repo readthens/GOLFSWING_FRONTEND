@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -2084,6 +2087,58 @@ class UploadQueueApiClient extends ApiClient {
   }
 }
 
+class RefreshRetryAdapter implements HttpClientAdapter {
+  RefreshRetryAdapter({this.refreshDelay = Duration.zero});
+
+  final Duration refreshDelay;
+  int protectedCalls = 0;
+  int refreshCalls = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.method == 'GET' && options.path == '/v1/me') {
+      protectedCalls += 1;
+      if (options.headers['Authorization'] == 'Bearer expired-access') {
+        return ResponseBody.fromString('', HttpStatus.unauthorized);
+      }
+      return _json(HttpStatus.ok, {
+        'user': {'id': 'refresh-user', 'email': 'refresh@example.com'},
+      });
+    }
+
+    if (options.method == 'POST' && options.path == '/v1/auth/refresh') {
+      refreshCalls += 1;
+      if (refreshDelay > Duration.zero) {
+        await Future<void>.delayed(refreshDelay);
+      }
+      return _json(HttpStatus.ok, {
+        'access_token': 'refreshed-access',
+        'refresh_token': 'refreshed-refresh',
+        'user': {'id': 'refresh-user', 'email': 'refresh@example.com'},
+      });
+    }
+
+    return ResponseBody.fromString('', HttpStatus.notFound);
+  }
+
+  @override
+  void close({bool force = false}) {}
+
+  ResponseBody _json(int statusCode, Object body) {
+    return ResponseBody.fromString(
+      jsonEncode(body),
+      statusCode,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+}
+
 void main() {
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
@@ -2136,6 +2191,26 @@ void main() {
     expect(capabilities.readinessLabel, 'DIAGNOSTIC ONLY');
   });
 
+  test('native tracer capture result parses phone local result', () {
+    final result = NativeTracerCaptureResult.fromJson({
+      'filePath': '/tmp/tracer.mov',
+      'diagnostics': {
+        'trackingState': 'tracking_complete',
+        'localTracerResult': {
+          'ball_path': [
+            {'x': 0.5, 'y': 0.78},
+            {'x': 0.45, 'y': 0.58},
+          ],
+          'impact_timestamp_ms': 122,
+        },
+      },
+    });
+
+    expect(result.filePath, '/tmp/tracer.mov');
+    expect(result.localResult['impact_timestamp_ms'], 122);
+    expect(result.localResult['ball_path'], hasLength(2));
+  });
+
   test('home dashboard model parses backend contract', () {
     final dashboard = HomeDashboard.fromJson(_homeDashboardJson());
 
@@ -2169,6 +2244,173 @@ void main() {
     expect(api.lastFavoriteIdempotencyKey, item.id);
     expect(queue.pendingCount, 0);
   });
+
+  test(
+    'api client refreshes access token and retries a protected request',
+    () async {
+      final adapter = RefreshRetryAdapter();
+      var tokens = const ApiTokenPair(
+        accessToken: 'expired-access',
+        refreshToken: 'old-refresh',
+      );
+      var savedRefreshes = 0;
+      var authFailures = 0;
+      final api =
+          ApiClient(
+            baseUrl: 'http://localhost:8000',
+            httpClientAdapter: adapter,
+          )..configureAuthSession(
+            readTokens: () => tokens,
+            saveTokens: (payload) async {
+              savedRefreshes += 1;
+              tokens = ApiTokenPair(
+                accessToken: payload.accessToken,
+                refreshToken: payload.refreshToken,
+              );
+            },
+            onAuthFailure: () async {
+              authFailures += 1;
+            },
+          );
+
+      final me = await api.getMe('expired-access');
+
+      expect(me.user.id, 'refresh-user');
+      expect(adapter.protectedCalls, 2);
+      expect(adapter.refreshCalls, 1);
+      expect(savedRefreshes, 1);
+      expect(tokens.accessToken, 'refreshed-access');
+      expect(authFailures, 0);
+    },
+  );
+
+  test('api client shares one refresh across concurrent 401s', () async {
+    final adapter = RefreshRetryAdapter(
+      refreshDelay: const Duration(milliseconds: 10),
+    );
+    var tokens = const ApiTokenPair(
+      accessToken: 'expired-access',
+      refreshToken: 'old-refresh',
+    );
+    var savedRefreshes = 0;
+    final api =
+        ApiClient(baseUrl: 'http://localhost:8000', httpClientAdapter: adapter)
+          ..configureAuthSession(
+            readTokens: () => tokens,
+            saveTokens: (payload) async {
+              savedRefreshes += 1;
+              tokens = ApiTokenPair(
+                accessToken: payload.accessToken,
+                refreshToken: payload.refreshToken,
+              );
+            },
+            onAuthFailure: () async {},
+          );
+
+    final results = await Future.wait([
+      api.getMe('expired-access'),
+      api.getMe('expired-access'),
+    ]);
+
+    expect(
+      results.map((payload) => payload.user.id),
+      everyElement('refresh-user'),
+    );
+    expect(adapter.refreshCalls, 1);
+    expect(savedRefreshes, 1);
+    expect(adapter.protectedCalls, 4);
+  });
+
+  test('offline queue retries only items owned by the current user', () async {
+    final queue = OfflineQueueStore(
+      persistence: MemoryOfflineQueuePersistence(),
+    );
+    await queue.load();
+    await queue.enqueue(
+      action: 'favorite.save',
+      title: 'User A save queued',
+      ownerUserId: 'user-a',
+      payload: {
+        'entity_type': 'swing_session',
+        'entity_id': 'session-a',
+        'metadata': <String, dynamic>{},
+      },
+    );
+    final userBItem = await queue.enqueue(
+      action: 'favorite.save',
+      title: 'User B save queued',
+      ownerUserId: 'user-b',
+      payload: {
+        'entity_type': 'swing_session',
+        'entity_id': 'session-b',
+        'metadata': <String, dynamic>{},
+      },
+    );
+    final api = SwingDetailApiClient();
+
+    await queue.retryAll(
+      accessToken: 'local-access-token',
+      apiClient: api,
+      ownerUserId: 'user-b',
+    );
+
+    expect(api.saveFavoriteCalls, 1);
+    expect(api.lastFavoriteIdempotencyKey, userBItem.id);
+    expect(queue.pendingCountFor('user-a'), 1);
+    expect(queue.pendingCountFor('user-b'), 0);
+    expect(queue.items.single.ownerUserId, 'user-a');
+  });
+
+  test(
+    'offline queue cleanup deletes retained failed and removed uploads',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'swinglens-queue-cleanup-test-',
+      );
+      addTearDown(() async {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      });
+      final failedFile = File('${directory.path}/failed.mov');
+      final pendingFile = File('${directory.path}/pending.mov');
+      await failedFile.writeAsBytes([1, 2, 3]);
+      await pendingFile.writeAsBytes([4, 5, 6]);
+      final persistence = MemoryOfflineQueuePersistence();
+      await persistence.write([
+        OfflineQueueItem(
+          id: 'failed-upload',
+          action: 'upload.swing_video',
+          title: 'Failed upload',
+          ownerUserId: 'user-a',
+          payload: {'local_file_path': failedFile.path},
+          createdAt: DateTime.utc(2026, 6, 12),
+          lastError: 'missing',
+        ),
+        OfflineQueueItem(
+          id: 'pending-upload',
+          action: 'upload.swing_video',
+          title: 'Pending upload',
+          ownerUserId: 'user-a',
+          payload: {'local_file_path': pendingFile.path},
+          createdAt: DateTime.utc(2026, 6, 12),
+        ),
+      ]);
+      final queue = OfflineQueueStore(persistence: persistence);
+      await queue.load();
+
+      await queue.clearFailed(ownerUserId: 'user-a');
+
+      expect(await failedFile.exists(), isFalse);
+      expect(await pendingFile.exists(), isTrue);
+      expect(queue.pendingCountFor('user-a'), 1);
+
+      await queue.remove('pending-upload');
+
+      expect(await pendingFile.exists(), isFalse);
+      expect(queue.pendingCountFor('user-a'), 0);
+    },
+  );
 
   test(
     'offline queue retries retained swing uploads with request id',
@@ -2359,6 +2601,7 @@ void main() {
     await queue.enqueue(
       action: 'favorite.save',
       title: 'Save session queued',
+      ownerUserId: 'local-test-user',
       payload: {
         'entity_type': 'swing_session',
         'entity_id': 'session-1',
@@ -2394,6 +2637,7 @@ void main() {
         id: 'failed-sync-item',
         action: 'upload.swing_video',
         title: 'Failed upload',
+        ownerUserId: 'local-test-user',
         payload: const <String, dynamic>{},
         createdAt: DateTime.utc(2026, 6, 12),
         lastError: 'Queued upload file is missing',
@@ -2402,6 +2646,7 @@ void main() {
         id: 'pending-sync-item',
         action: 'favorite.save',
         title: 'Pending favorite',
+        ownerUserId: 'local-test-user',
         payload: const <String, dynamic>{
           'entity_type': 'swing_session',
           'entity_id': 'session-1',
@@ -2450,6 +2695,7 @@ void main() {
     final item = await queue.enqueue(
       action: 'favorite.save',
       title: 'Save session queued',
+      ownerUserId: 'local-test-user',
       payload: {
         'entity_type': 'swing_session',
         'entity_id': 'session-1',
@@ -2485,21 +2731,14 @@ void main() {
     expect(find.text('SIGN IN'), findsOneWidget);
   });
 
-  testWidgets('debug sign in exposes and fills the local test account', (
+  testWidgets('debug sign in hides local test account without dart defines', (
     WidgetTester tester,
   ) async {
     await pumpSwingLensApp(tester);
     await tester.tap(find.text('SIGN IN'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('USE LOCAL TEST ACCOUNT'));
-    await tester.pumpAndSettle();
-
-    final fields = tester
-        .widgetList<TextField>(find.byType(TextField))
-        .toList();
-    expect(fields.first.controller?.text, contains('swinglens.phase6.tracer'));
-    expect(fields.last.controller?.text, 'LocalSwing!2026-06-07#06');
+    expect(find.text('USE LOCAL TEST ACCOUNT'), findsNothing);
   });
 
   testWidgets('sign up form stays usable when the keyboard is visible', (

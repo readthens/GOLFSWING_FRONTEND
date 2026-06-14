@@ -94,11 +94,17 @@ class _OfflineSyncCoordinatorState extends ConsumerState<OfflineSyncCoordinator>
   }
 
   Future<void> _tryAutoSync() async {
-    final token = ref.read(authControllerProvider).state.accessToken;
-    if (token == null) return;
+    final auth = ref.read(authControllerProvider).state;
+    final token = auth.accessToken;
+    final ownerUserId = auth.user?.id;
+    if (token == null || ownerUserId == null) return;
     final queue = ref.read(offlineQueueProvider);
     await queue.load();
-    if (!mounted || queue.pendingCount == 0 || queue.isSyncing) return;
+    if (!mounted ||
+        queue.pendingCountFor(ownerUserId) == 0 ||
+        queue.isSyncing) {
+      return;
+    }
 
     final now = DateTime.now();
     final lastAutoSyncAt = _lastAutoSyncAt;
@@ -110,6 +116,7 @@ class _OfflineSyncCoordinatorState extends ConsumerState<OfflineSyncCoordinator>
     await queue.retryAll(
       accessToken: token,
       apiClient: ref.read(apiClientProvider),
+      ownerUserId: ownerUserId,
     );
   }
 }

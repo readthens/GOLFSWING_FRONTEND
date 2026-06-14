@@ -18,8 +18,7 @@ class NativeCaptureCapabilities {
     return NativeCaptureCapabilities(
       highFpsCaptureAvailable: json['highFpsCaptureAvailable'] == true,
       nativeCaptureAvailable: json['nativeCaptureAvailable'] == true,
-      trustedAutoCaptureAvailable:
-          json['trustedAutoCaptureAvailable'] == true,
+      trustedAutoCaptureAvailable: json['trustedAutoCaptureAvailable'] == true,
       diagnosticOnly: json['diagnosticOnly'] != false,
       deviceTier: json['deviceTier'] as String? ?? 'D',
       deviceModel: json['deviceModel'] as String?,
@@ -54,17 +53,23 @@ class NativeTracerCaptureResult {
   const NativeTracerCaptureResult({
     required this.filePath,
     required this.diagnostics,
+    required this.localResult,
   });
 
   factory NativeTracerCaptureResult.fromJson(Map<dynamic, dynamic> json) {
+    final diagnostics = _mapFromJson(json['diagnostics']);
     return NativeTracerCaptureResult(
       filePath: json['filePath'] as String? ?? '',
-      diagnostics: _mapFromJson(json['diagnostics']),
+      diagnostics: diagnostics,
+      localResult: _mapFromJson(
+        json['localResult'] ?? diagnostics['localTracerResult'],
+      ),
     );
   }
 
   final String filePath;
   final Map<String, dynamic> diagnostics;
+  final Map<String, dynamic> localResult;
 }
 
 class NativeCaptureBridge {
@@ -79,9 +84,12 @@ class NativeCaptureBridge {
     return NativeCaptureCapabilities.fromJson(response ?? const {});
   }
 
-  Future<Map<String, dynamic>> startTracerCapture() async {
+  Future<Map<String, dynamic>> startTracerCapture({
+    Map<String, dynamic> tracerSetup = const {},
+  }) async {
     final response = await _channel.invokeMapMethod<String, dynamic>(
       'startTracerCapture',
+      tracerSetup,
     );
     return _mapFromJson(response);
   }

@@ -14,6 +14,7 @@ import '../api/api_client.dart';
 import '../auth/auth_controller.dart';
 import '../capture/native_capture_bridge.dart';
 import '../capture/tracer_readiness.dart';
+import '../config/shot_tracer_config.dart';
 import '../offline/offline_queue.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_chrome.dart';
@@ -68,8 +69,14 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       const NativeCaptureCapabilities(highFpsCaptureAvailable: false);
   Map<String, dynamic> _nativeCaptureDiagnostics = const {};
   bool _isNativeTracerRecording = false;
+  bool _nativeDiagnosticsPollInFlight = false;
   Map<String, bool> _recordedTracerReadinessChecks = const {};
   int? _recordedStableDurationMs;
+  Timer? _nativeDiagnosticsTimer;
+  String _nativeTrackingState = 'idle';
+  int? _nativeImpactTimestampMs;
+  Map<String, dynamic> _phoneTracerLocalResult = const {};
+  List<Offset> _liveTracerPath = const [];
   Offset _tracerBallAnchor = const Offset(0.5, 0.78);
   Offset _tracerTargetPoint = const Offset(0.5, 0.28);
 
@@ -103,6 +110,11 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
 
   bool get _isTracerMode => widget.mode == UploadMode.tracer;
   bool get _isTracerCameraEntry => _isTracerMode && widget.cameraFirst;
+  bool get _usesPhoneTracerProcessing =>
+      _isTracerMode && shotTracerPhoneProcessingEnabled;
+  bool get _localTracerResultReady =>
+      _phoneTracerLocalResult['ball_path'] is List &&
+      (_phoneTracerLocalResult['ball_path'] as List).length >= 2;
 
   @override
   void initState() {
@@ -125,6 +137,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   void dispose() {
     _sensorTimeoutTimer?.cancel();
     _tracerRecordingTimer?.cancel();
+    _nativeDiagnosticsTimer?.cancel();
     _accelerometerSubscription?.cancel();
     _videoController?.dispose();
     _cameraController?.dispose();
@@ -138,12 +151,14 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     final hasHardFailure = qualityChecks.any(
       (check) => check.severity == 'fail',
     );
+    final localTracerReady =
+        !_usesPhoneTracerProcessing || _localTracerResultReady;
     final tracerReadiness = _tracerReadiness;
 
     if (_isTracerCameraEntry) {
       return _buildTracerCameraFirstScreen(
         auth: auth,
-        hasHardFailure: hasHardFailure,
+        hasHardFailure: hasHardFailure || (_file != null && !localTracerReady),
         tracerReadiness: tracerReadiness,
       );
     }
@@ -199,6 +214,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                   tracerTargetPoint: _tracerTargetPoint,
                   tracerStyle: _tracerStyle,
                   tracerPointMode: _tracerPointMode,
+                  tracerPath: _liveTracerPath,
                   handedness:
                       auth.profile?.handedness?.toLowerCase() ?? 'right',
                   onTracerPointChanged: _isTracerMode
@@ -260,9 +276,13 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                       : _isTracerMode
                       ? 'UPLOAD TRACER VIDEO'
                       : 'UPLOAD SWING',
-                  onPressed: _file == null || hasHardFailure || _isUploading
+                  onPressed:
+                      _file == null ||
+                          hasHardFailure ||
+                          _isUploading ||
+                          !localTracerReady
                       ? null
-                      : () => _upload(auth.accessToken),
+                      : () => _upload(auth),
                 ),
               ],
             ],
@@ -304,6 +324,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                 tracerTargetPoint: _tracerTargetPoint,
                 tracerStyle: _tracerStyle,
                 tracerPointMode: _tracerPointMode,
+                tracerPath: _liveTracerPath,
                 handedness: handedness,
                 onBack: () => context.go('/tracer'),
                 onTracerPointChanged: _updateTracerPoint,
@@ -319,7 +340,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
               status: _tracerControlHint(capturePrompt),
               onRecord: _recordOrStop,
               onRetake: _retakeTracerCapture,
-              onUseVideo: () => _upload(auth.accessToken),
+              onUseVideo: () => _upload(auth),
             ),
           ],
         ),
@@ -405,6 +426,15 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     TracerReadinessResult readiness,
   ) {
     if (_file != null) return 'VIDEO READY';
+    if (_isRecording && _usesPhoneTracerProcessing) {
+      return switch (_nativeTrackingState) {
+        'tracking_live' => 'LIVE TRACER',
+        'tracking_complete' => 'TRACER LOCKED',
+        'impact_detected' => 'IMPACT DETECTED',
+        _ when _tracerImpactWindowActive => 'IMPACT DETECTED',
+        _ => 'WAITING FOR IMPACT',
+      };
+    }
     if (_isRecording && _tracerImpactWindowActive) return 'IMPACT WINDOW';
     if (_isRecording) return 'WAITING FOR IMPACT';
     if (_isInitializingCamera) return 'OPENING CAMERA';
@@ -437,6 +467,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       'READY FOR CAPTURE' => 'PRESS RECORD WHEN FRAMED',
       'VIDEO READY' => 'USE VIDEO TO CONTINUE',
       'WAITING FOR IMPACT' || 'IMPACT WINDOW' => 'KEEP PHONE STEADY',
+      'IMPACT DETECTED' ||
+      'LIVE TRACER' ||
+      'TRACER LOCKED' => 'KEEP RECORDING UNTIL BALL FLIGHT ENDS',
       'OPENING CAMERA' => 'PREPARING CAMERA',
       _ => 'ADJUST FRAME',
     };
@@ -464,11 +497,16 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
           Text('BALL: ${_formatPoint(_tracerBallAnchor)}'),
           Text('TARGET: ${_formatPoint(_tracerTargetPoint)}'),
           Text('STYLE: ${_tracerStyle.replaceAll('_', ' ').toUpperCase()}'),
+          Text('PROCESSING: $shotTracerProcessingModeLabel'),
           Text('AUTO ELIGIBLE: ${tracerReadiness.autoEligible ? 'YES' : 'NO'}'),
           Text(
             'STABLE HOLD: ${(_effectiveStableDurationMs / 1000).toStringAsFixed(1)} SEC',
           ),
           Text('TRACER CAMERA: ${_nativeCaptureCapabilities.readinessLabel}'),
+          if (_usesPhoneTracerProcessing) ...[
+            Text('PHONE TRACKING: ${_nativeTrackingState.toUpperCase()}'),
+            Text('LOCAL PATH POINTS: ${_liveTracerPath.length}'),
+          ],
           if (_nativeCaptureDiagnostics.isNotEmpty) ...[
             Text(
               'NATIVE MODE: ${_nativeCaptureDiagnostics['formatLabel'] ?? 'UNKNOWN'}',
@@ -524,6 +562,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         Text(
           'MODE: ${_nativeCaptureCapabilities.preferredMode ?? 'diagnostic'}',
         ),
+        Text('PROCESSING: $shotTracerProcessingModeLabel'),
         const Text('Tap or drag on the preview to set the selected marker.'),
         CheckboxListTile(
           contentPadding: EdgeInsets.zero,
@@ -616,6 +655,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   }
 
   Future<void> _retakeTracerCapture() async {
+    _stopNativeDiagnosticsPolling();
     await _videoController?.dispose();
     if (!mounted) return;
     setState(() {
@@ -633,6 +673,10 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       _tracerRecordingTenths = 0;
       _recordedTracerReadinessChecks = const {};
       _recordedStableDurationMs = null;
+      _nativeTrackingState = 'idle';
+      _nativeImpactTimestampMs = null;
+      _phoneTracerLocalResult = const {};
+      _liveTracerPath = const [];
     });
     if (!(_cameraController?.value.isInitialized ?? false)) {
       await _initializeCamera();
@@ -652,6 +696,14 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       });
       return;
     }
+    if (_usesPhoneTracerProcessing &&
+        !_nativeCaptureCapabilities.trustedForTracer) {
+      setState(() {
+        _cameraNotice =
+            'Phone shot tracer needs native high-FPS rear-camera capture on this device. Switch SHOT_TRACER_PROCESSING_MODE to backend to use server processing.';
+      });
+      return;
+    }
     final recordingReadiness = _tracerReadiness;
     final recordingStableDurationMs = _stableDurationMs;
 
@@ -665,6 +717,12 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         _resolutionWidth = null;
         _resolutionHeight = null;
         _mediaNotice = null;
+        _phoneTracerLocalResult = const {};
+        _liveTracerPath = const [];
+        _nativeTrackingState = _usesPhoneTracerProcessing
+            ? 'waiting_for_impact'
+            : 'idle';
+        _nativeImpactTimestampMs = null;
         _recordedTracerReadinessChecks = _isTracerMode
             ? Map<String, bool>.from(recordingReadiness.checks)
             : const {};
@@ -675,7 +733,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       if (_isTracerMode && _nativeCaptureCapabilities.trustedForTracer) {
         await _cameraController?.dispose();
         _cameraController = null;
-        await _nativeCaptureBridge.startTracerCapture();
+        await _nativeCaptureBridge.startTracerCapture(
+          tracerSetup: _nativeTracerSetup(),
+        );
         setState(() {
           _isRecording = true;
           _tracerImpactWindowActive = false;
@@ -688,6 +748,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
           _error = null;
         });
         _startTracerRecordingClock();
+        _startNativeDiagnosticsPolling();
         return;
       }
       await controller.startVideoRecording();
@@ -718,7 +779,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       if (!mounted || !_isRecording) return;
       setState(() {
         _tracerRecordingTenths += 1;
-        if (_tracerRecordingTenths >= 18) {
+        if (!_usesPhoneTracerProcessing && _tracerRecordingTenths >= 18) {
           _tracerImpactWindowActive = true;
         }
       });
@@ -728,11 +789,17 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   Future<void> _stopRecording() async {
     _tracerRecordingTimer?.cancel();
     if (_isNativeTracerRecording) {
+      _stopNativeDiagnosticsPolling();
       try {
         final result = await _nativeCaptureBridge.stopTracerCapture();
+        _applyNativeDiagnostics(
+          result.diagnostics,
+          localResult: result.localResult,
+        );
         setState(() {
           _isRecording = false;
-          _tracerImpactWindowActive = true;
+          _tracerImpactWindowActive =
+              !_usesPhoneTracerProcessing || _nativeImpactTimestampMs != null;
           _isNativeTracerRecording = false;
           _nativeCaptureDiagnostics = result.diagnostics;
           _cameraLensDirection = 'back';
@@ -776,6 +843,203 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
             : 'Recording could not be saved. Choose a saved video or try recording again.';
       });
     }
+  }
+
+  Map<String, dynamic> _nativeTracerSetup() {
+    return {
+      'processing_mode': _usesPhoneTracerProcessing ? 'phone' : 'backend',
+      'ball_anchor': _pointJson(_tracerBallAnchor),
+      'target_line': {
+        'start': _pointJson(_tracerBallAnchor),
+        'end': _pointJson(_tracerTargetPoint),
+      },
+      'style': _tracerStyle,
+      'point_mode': _tracerPointMode,
+    };
+  }
+
+  void _startNativeDiagnosticsPolling() {
+    if (!_usesPhoneTracerProcessing) return;
+    _nativeDiagnosticsTimer?.cancel();
+    _nativeDiagnosticsTimer = Timer.periodic(
+      const Duration(milliseconds: 120),
+      (_) async {
+        if (!mounted ||
+            !_isNativeTracerRecording ||
+            _nativeDiagnosticsPollInFlight) {
+          return;
+        }
+        _nativeDiagnosticsPollInFlight = true;
+        try {
+          final diagnostics = await _nativeCaptureBridge
+              .getCurrentCaptureDiagnostics();
+          if (!mounted || !_isNativeTracerRecording) return;
+          _applyNativeDiagnostics(diagnostics);
+        } catch (_) {
+          // Diagnostics polling should never interrupt the active recording.
+        } finally {
+          _nativeDiagnosticsPollInFlight = false;
+        }
+      },
+    );
+  }
+
+  void _stopNativeDiagnosticsPolling() {
+    _nativeDiagnosticsTimer?.cancel();
+    _nativeDiagnosticsTimer = null;
+    _nativeDiagnosticsPollInFlight = false;
+  }
+
+  void _applyNativeDiagnostics(
+    Map<String, dynamic> diagnostics, {
+    Map<String, dynamic> localResult = const {},
+  }) {
+    if (!mounted) return;
+    final rawLocalResult = _mapFromAny(
+      localResult.isNotEmpty
+          ? localResult
+          : diagnostics['localTracerResult'] ?? diagnostics,
+    );
+    final rawPath =
+        rawLocalResult['ball_path'] ??
+        rawLocalResult['ballPath'] ??
+        diagnostics['ballPath'];
+    final pathPoints = _pathPointsFromNative(rawPath);
+    final pathOffsets = _offsetsFromPathPoints(pathPoints);
+    final impactTimestampMs = _intFromAny(
+      rawLocalResult['impact_timestamp_ms'] ??
+          rawLocalResult['impactTimestampMs'] ??
+          diagnostics['impactTimestampMs'],
+    );
+    final confidence = _doubleFromAny(
+      rawLocalResult['confidence'] ?? diagnostics['confidence'],
+    );
+    final trackingState =
+        rawLocalResult['tracking_state'] as String? ??
+        rawLocalResult['trackingState'] as String? ??
+        diagnostics['trackingState'] as String? ??
+        (impactTimestampMs == null ? 'waiting_for_impact' : 'tracking_live');
+    final normalizedResult = pathPoints.length >= 2
+        ? (<String, dynamic>{
+            'ball_path': pathPoints,
+            'impact_timestamp_ms': impactTimestampMs,
+            'confidence': confidence,
+            'metrics': {
+              'tracking_state': trackingState,
+              'processing_mode': 'phone',
+              'path_source': 'client_phone',
+            },
+            'style': {'name': _tracerStyle},
+            'diagnostics': _clientSafeNativeDiagnostics(diagnostics),
+          }..removeWhere((_, value) => value == null))
+        : const <String, dynamic>{};
+    setState(() {
+      _nativeCaptureDiagnostics = diagnostics;
+      _nativeTrackingState = trackingState;
+      _nativeImpactTimestampMs = impactTimestampMs;
+      _tracerImpactWindowActive =
+          impactTimestampMs != null ||
+          trackingState == 'impact_detected' ||
+          trackingState == 'tracking_live' ||
+          trackingState == 'tracking_complete';
+      if (_usesPhoneTracerProcessing && pathOffsets.isNotEmpty) {
+        _liveTracerPath = pathOffsets;
+      }
+      if (_usesPhoneTracerProcessing && normalizedResult.isNotEmpty) {
+        _phoneTracerLocalResult = normalizedResult;
+      }
+    });
+  }
+
+  Map<String, dynamic> _clientSafeNativeDiagnostics(
+    Map<String, dynamic> diagnostics,
+  ) {
+    final allowedKeys = {
+      'source',
+      'deviceModel',
+      'systemVersion',
+      'deviceTier',
+      'formatLabel',
+      'targetFps',
+      'measuredFps',
+      'width',
+      'height',
+      'lensPosition',
+      'lensDeviceType',
+      'sampleCount',
+      'droppedFrameCount',
+      'firstFrameTimestampMs',
+      'lastFrameTimestampMs',
+      'startedAtMs',
+      'trackingState',
+      'impactTimestampMs',
+      'confidence',
+    };
+    return Map<String, dynamic>.fromEntries(
+      diagnostics.entries.where((entry) => allowedKeys.contains(entry.key)),
+    );
+  }
+
+  List<Map<String, dynamic>> _pathPointsFromNative(Object? value) {
+    if (value is! List) return const [];
+    final points = <Map<String, dynamic>>[];
+    for (final item in value) {
+      final point = _mapFromAny(item);
+      final x = _doubleFromAny(point['x']);
+      final y = _doubleFromAny(point['y']);
+      if (x == null || y == null) continue;
+      if (x < 0 || x > 1 || y < 0 || y > 1) continue;
+      final timestampMs = _intFromAny(
+        point['timestamp_ms'] ?? point['timestampMs'],
+      );
+      final confidence = _doubleFromAny(point['confidence']);
+      final cleaned = <String, dynamic>{
+        'x': double.parse(x.toStringAsFixed(4)),
+        'y': double.parse(y.toStringAsFixed(4)),
+      };
+      if (timestampMs != null) {
+        cleaned['timestamp_ms'] = timestampMs;
+      }
+      if (confidence != null) {
+        cleaned['confidence'] = double.parse(
+          confidence.clamp(0, 1).toStringAsFixed(3),
+        );
+      }
+      points.add(cleaned);
+    }
+    return points;
+  }
+
+  List<Offset> _offsetsFromPathPoints(List<Map<String, dynamic>> points) {
+    return points
+        .map(
+          (point) => Offset(
+            (point['x'] as num).toDouble(),
+            (point['y'] as num).toDouble(),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Map<String, dynamic> _mapFromAny(Object? value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return <String, dynamic>{};
+  }
+
+  int? _intFromAny(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  double? _doubleFromAny(Object? value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
   }
 
   Future<void> _initializeCamera() async {
@@ -941,6 +1205,10 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       _mediaNotice = notice;
       if (source != 'native_camera') {
         _nativeCaptureDiagnostics = const {};
+        _nativeTrackingState = 'idle';
+        _nativeImpactTimestampMs = null;
+        _phoneTracerLocalResult = const {};
+        _liveTracerPath = const [];
       }
       if (!_isTracerMode || source == 'gallery') {
         _recordedTracerReadinessChecks = const {};
@@ -950,8 +1218,19 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     });
   }
 
-  Future<void> _upload(String? token) async {
+  Future<void> _upload(AuthState auth) async {
+    final token = auth.accessToken;
     if (token == null || _file == null) return;
+    if (_usesPhoneTracerProcessing && !_localTracerResultReady) {
+      setState(() {
+        _error =
+            'Phone tracer mode needs an on-device ball path. Retake with native high-FPS capture or switch SHOT_TRACER_PROCESSING_MODE to backend.';
+      });
+      return;
+    }
+    final localTracerResult = _usesPhoneTracerProcessing
+        ? _localTracerPayloadForUpload()
+        : null;
     final captureMetadata = UploadCaptureMetadata(
       source: _source,
       guideOverlay: _guideOverlay,
@@ -980,6 +1259,15 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
             sessionType: _isTracerMode ? 'tracer' : 'analysis',
             captureMetadata: captureMetadata,
           );
+      if (localTracerResult != null) {
+        await ref
+            .read(apiClientProvider)
+            .createLocalTracerResult(
+              accessToken: token,
+              sessionId: session.id,
+              payload: localTracerResult,
+            );
+      }
       if (mounted) context.go('/swings/${session.id}');
     } catch (error) {
       if (shouldQueueOffline(error)) {
@@ -991,10 +1279,12 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
               angle: _angle,
               locationType: _locationType,
               sessionType: _isTracerMode ? 'tracer' : 'analysis',
+              ownerUserId: auth.user?.id,
               durationMs: _durationMs,
               resolutionWidth: _resolutionWidth,
               resolutionHeight: _resolutionHeight,
               captureMetadata: captureMetadata.toJson(),
+              localTracerResult: localTracerResult,
             );
         if (!mounted) return;
         setState(() => _isUploading = false);
@@ -1101,6 +1391,27 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
               : 'Gallery videos may not use the capture guide.',
         ),
       );
+    }
+    if (_usesPhoneTracerProcessing) {
+      if (_source != 'native_camera') {
+        checks.add(
+          const _LocalQualityCheck.fail(
+            'Phone tracer mode requires guided native camera capture.',
+          ),
+        );
+      } else if (!_localTracerResultReady) {
+        checks.add(
+          const _LocalQualityCheck.fail(
+            'Phone tracer mode did not detect a local ball path. Retake the shot.',
+          ),
+        );
+      } else {
+        checks.add(
+          _LocalQualityCheck.pass(
+            'Phone tracer path captured with ${_liveTracerPath.length} points.',
+          ),
+        );
+      }
     }
     return checks;
   }
@@ -1220,6 +1531,8 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       'handedness': handedness,
       'guide_version': 'phase6_12_range_tracer_guide_v1',
       'capture_source': _source,
+      'processing_mode': _usesPhoneTracerProcessing ? 'phone' : 'backend',
+      'local_tracer_result_available': _localTracerResultReady,
       'auto_eligible': readiness.autoEligible,
       'readiness_checks': readiness.checks,
       'phone_level_degrees': _phoneLevelDegrees,
@@ -1229,6 +1542,11 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       'white_ball_confirmed': _whiteBallConfirmed,
       'simulator_or_unverified': readiness.checks['simulator_or_unverified'],
       'native_capture': nativeCapture,
+      'local_tracer': {
+        'tracking_state': _nativeTrackingState,
+        'impact_timestamp_ms': _nativeImpactTimestampMs,
+        'path_point_count': _liveTracerPath.length,
+      },
       'capture_quality': {
         'source_type': _source,
         'guide_overlay': _guideOverlay,
@@ -1244,6 +1562,8 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         'resolution_width': _resolutionWidth,
         'resolution_height': _resolutionHeight,
         'native_capture': nativeCapture,
+        'processing_mode': _usesPhoneTracerProcessing ? 'phone' : 'backend',
+        'local_path_point_count': _liveTracerPath.length,
         'measured_fps': nativeCapture['measured_fps'],
         'target_fps': nativeCapture['target_fps'],
         'device_tier': nativeCapture['device_tier'],
@@ -1288,7 +1608,30 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       'first_frame_timestamp_ms': diagnostics['firstFrameTimestampMs'],
       'last_frame_timestamp_ms': diagnostics['lastFrameTimestampMs'],
       'started_at_ms': diagnostics['startedAtMs'],
+      'tracking_state': diagnostics['trackingState'] ?? _nativeTrackingState,
+      'impact_timestamp_ms':
+          diagnostics['impactTimestampMs'] ?? _nativeImpactTimestampMs,
+      'local_path_point_count': _liveTracerPath.length,
     };
+  }
+
+  Map<String, dynamic> _localTracerPayloadForUpload() {
+    final payload = Map<String, dynamic>.from(_phoneTracerLocalResult);
+    payload['style'] = {'name': _tracerStyle};
+    payload['metrics'] = {
+      ...Map<String, dynamic>.from(payload['metrics'] as Map? ?? const {}),
+      'processing_mode': 'phone',
+      'path_source': 'client_phone',
+      'tracking_state': _nativeTrackingState,
+    };
+    payload['diagnostics'] = {
+      ...Map<String, dynamic>.from(payload['diagnostics'] as Map? ?? const {}),
+      'processing_mode': 'phone',
+      'tracking_state': _nativeTrackingState,
+      'impact_timestamp_ms': _nativeImpactTimestampMs,
+      'path_point_count': _liveTracerPath.length,
+    }..removeWhere((_, value) => value == null);
+    return payload;
   }
 
   Map<String, bool> _tracerAlignmentChecks(String? handedness) {
@@ -1374,6 +1717,7 @@ class _TracerCameraOnlyPreview extends StatelessWidget {
     required this.tracerTargetPoint,
     required this.tracerStyle,
     required this.tracerPointMode,
+    required this.tracerPath,
     required this.handedness,
     required this.onBack,
     required this.onTracerPointChanged,
@@ -1391,6 +1735,7 @@ class _TracerCameraOnlyPreview extends StatelessWidget {
   final Offset tracerTargetPoint;
   final String tracerStyle;
   final String tracerPointMode;
+  final List<Offset> tracerPath;
   final String handedness;
   final VoidCallback onBack;
   final ValueChanged<Offset> onTracerPointChanged;
@@ -1444,6 +1789,7 @@ class _TracerCameraOnlyPreview extends StatelessWidget {
                   tracerTargetPoint: tracerTargetPoint,
                   tracerStyle: tracerStyle,
                   tracerPointMode: tracerPointMode,
+                  tracerPath: tracerPath,
                   handedness: handedness,
                   dimmed: fallbackOnly,
                 ),
@@ -1841,6 +2187,7 @@ class _CapturePreview extends StatelessWidget {
     required this.tracerTargetPoint,
     required this.tracerStyle,
     required this.tracerPointMode,
+    required this.tracerPath,
     required this.handedness,
     this.onTracerPointChanged,
   });
@@ -1855,6 +2202,7 @@ class _CapturePreview extends StatelessWidget {
   final Offset tracerTargetPoint;
   final String tracerStyle;
   final String tracerPointMode;
+  final List<Offset> tracerPath;
   final String handedness;
   final ValueChanged<Offset>? onTracerPointChanged;
 
@@ -1915,6 +2263,7 @@ class _CapturePreview extends StatelessWidget {
                     tracerTargetPoint: tracerTargetPoint,
                     tracerStyle: tracerStyle,
                     tracerPointMode: tracerPointMode,
+                    tracerPath: tracerPath,
                     handedness: handedness,
                     dimmed: false,
                   ),
@@ -1989,6 +2338,7 @@ class _CaptureGuidePainter extends CustomPainter {
     required this.tracerTargetPoint,
     required this.tracerStyle,
     required this.tracerPointMode,
+    required this.tracerPath,
     required this.handedness,
     required this.dimmed,
   });
@@ -2000,6 +2350,7 @@ class _CaptureGuidePainter extends CustomPainter {
   final Offset tracerTargetPoint;
   final String tracerStyle;
   final String tracerPointMode;
+  final List<Offset> tracerPath;
   final String handedness;
   final bool dimmed;
 
@@ -2103,6 +2454,7 @@ class _CaptureGuidePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(ball, target, lineHaloPaint);
     _drawDashedLine(canvas, ball, target, linePaint, dash: 10, gap: 8);
+    _drawLiveTracerPath(canvas, size, accent, opacity);
     _drawBallAnchor(canvas, ball, accent, opacity);
     _drawTargetMarker(canvas, target, accent, opacity);
 
@@ -2140,6 +2492,55 @@ class _CaptureGuidePainter extends CustomPainter {
       Offset(size.width - inset, inset),
       Offset(size.width - inset, inset + length),
       cornerPaint,
+    );
+  }
+
+  void _drawLiveTracerPath(
+    Canvas canvas,
+    Size size,
+    Color accent,
+    double opacity,
+  ) {
+    if (tracerPath.length < 2) return;
+    final path = Path();
+    for (var index = 0; index < tracerPath.length; index += 1) {
+      final point = tracerPath[index];
+      final pixel = Offset(
+        point.dx.clamp(0, 1).toDouble() * size.width,
+        point.dy.clamp(0, 1).toDouble() * size.height,
+      );
+      if (index == 0) {
+        path.moveTo(pixel.dx, pixel.dy);
+      } else {
+        path.lineTo(pixel.dx, pixel.dy);
+      }
+    }
+    final haloPaint = Paint()
+      ..color = accent.withValues(alpha: 0.18 * opacity)
+      ..strokeWidth = 10
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final corePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.84 * opacity)
+      ..strokeWidth = 3.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas
+      ..drawPath(path, haloPaint)
+      ..drawPath(path, corePaint);
+    final last = tracerPath.last;
+    final endpoint = Offset(
+      last.dx.clamp(0, 1).toDouble() * size.width,
+      last.dy.clamp(0, 1).toDouble() * size.height,
+    );
+    canvas.drawCircle(
+      endpoint,
+      5.5,
+      Paint()
+        ..color = accent.withValues(alpha: 0.9 * opacity)
+        ..style = PaintingStyle.fill,
     );
   }
 
@@ -2359,6 +2760,7 @@ class _CaptureGuidePainter extends CustomPainter {
         oldDelegate.tracerTargetPoint != tracerTargetPoint ||
         oldDelegate.tracerStyle != tracerStyle ||
         oldDelegate.tracerPointMode != tracerPointMode ||
+        oldDelegate.tracerPath != tracerPath ||
         oldDelegate.handedness != handedness ||
         oldDelegate.dimmed != dimmed;
   }

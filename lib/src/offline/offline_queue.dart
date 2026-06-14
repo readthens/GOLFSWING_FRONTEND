@@ -38,6 +38,7 @@ class OfflineQueueItem {
     required this.title,
     required this.payload,
     required this.createdAt,
+    this.ownerUserId,
     this.attemptCount = 0,
     this.lastError,
   });
@@ -47,10 +48,12 @@ class OfflineQueueItem {
   final String title;
   final Map<String, dynamic> payload;
   final DateTime createdAt;
+  final String? ownerUserId;
   final int attemptCount;
   final String? lastError;
 
   OfflineQueueItem copyWith({
+    String? ownerUserId,
     int? attemptCount,
     String? lastError,
     bool clearLastError = false,
@@ -61,6 +64,7 @@ class OfflineQueueItem {
       title: title,
       payload: payload,
       createdAt: createdAt,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
       attemptCount: attemptCount ?? this.attemptCount,
       lastError: clearLastError ? null : lastError ?? this.lastError,
     );
@@ -73,6 +77,7 @@ class OfflineQueueItem {
       'title': title,
       'payload': payload,
       'created_at': createdAt.toIso8601String(),
+      'owner_user_id': ownerUserId,
       'attempt_count': attemptCount,
       'last_error': lastError,
     }..removeWhere((_, value) => value == null);
@@ -85,6 +90,7 @@ class OfflineQueueItem {
       title: json['title'] as String,
       payload: Map<String, dynamic>.from(json['payload'] as Map),
       createdAt: DateTime.parse(json['created_at'] as String),
+      ownerUserId: json['owner_user_id'] as String?,
       attemptCount: json['attempt_count'] as int? ?? 0,
       lastError: json['last_error'] as String?,
     );
@@ -94,6 +100,7 @@ class OfflineQueueItem {
 abstract class OfflineQueuePersistence {
   Future<List<OfflineQueueItem>> read();
   Future<void> write(List<OfflineQueueItem> items);
+  Future<void> delete();
 }
 
 class FileOfflineQueuePersistence implements OfflineQueuePersistence {
@@ -123,6 +130,14 @@ class FileOfflineQueuePersistence implements OfflineQueuePersistence {
       jsonEncode(items.map((item) => item.toJson()).toList()),
     );
   }
+
+  @override
+  Future<void> delete() async {
+    final file = await _file();
+    if (file.existsSync()) {
+      await file.delete();
+    }
+  }
 }
 
 class MemoryOfflineQueuePersistence implements OfflineQueuePersistence {
@@ -134,6 +149,11 @@ class MemoryOfflineQueuePersistence implements OfflineQueuePersistence {
   @override
   Future<void> write(List<OfflineQueueItem> items) async {
     _items = List.unmodifiable(items);
+  }
+
+  @override
+  Future<void> delete() async {
+    _items = const [];
   }
 }
 
@@ -153,6 +173,23 @@ class OfflineQueueStore extends ChangeNotifier {
   int get failedCount => _items.where(_isFailed).length;
   bool get isSyncing => _isSyncing;
   String? get activeItemId => _activeItemId;
+
+  List<OfflineQueueItem> itemsFor(String? ownerUserId) {
+    return List.unmodifiable(
+      _items.where((item) => _matchesOwner(item, ownerUserId)),
+    );
+  }
+
+  int pendingCountFor(String? ownerUserId) {
+    return _items.where((item) => _matchesOwner(item, ownerUserId)).length;
+  }
+
+  int failedCountFor(String? ownerUserId) {
+    return _items
+        .where((item) => _matchesOwner(item, ownerUserId))
+        .where(_isFailed)
+        .length;
+  }
 
   OfflineQueueItemStatus statusFor(OfflineQueueItem item) {
     if (_activeItemId == item.id) return OfflineQueueItemStatus.syncing;
@@ -175,6 +212,7 @@ class OfflineQueueStore extends ChangeNotifier {
     required String action,
     required String title,
     required Map<String, dynamic> payload,
+    String? ownerUserId,
   }) async {
     await load();
     final item = OfflineQueueItem(
@@ -183,6 +221,7 @@ class OfflineQueueStore extends ChangeNotifier {
       title: title,
       payload: payload,
       createdAt: DateTime.now().toUtc(),
+      ownerUserId: ownerUserId,
     );
     _items.add(item);
     await _persist();
@@ -196,6 +235,8 @@ class OfflineQueueStore extends ChangeNotifier {
     required String locationType,
     required String sessionType,
     required Map<String, dynamic> captureMetadata,
+    Map<String, dynamic>? localTracerResult,
+    String? ownerUserId,
     int? durationMs,
     int? resolutionWidth,
     int? resolutionHeight,
@@ -205,6 +246,7 @@ class OfflineQueueStore extends ChangeNotifier {
     return enqueue(
       action: 'upload.swing_video',
       title: 'Video upload queued',
+      ownerUserId: ownerUserId,
       payload: {
         'local_file_path': retained.path,
         'file_name': file.name,
@@ -216,6 +258,7 @@ class OfflineQueueStore extends ChangeNotifier {
         'duration_ms': durationMs,
         'resolution_width': resolutionWidth,
         'resolution_height': resolutionHeight,
+        'local_tracer_result': localTracerResult,
       }..removeWhere((_, value) => value == null),
     );
   }
@@ -223,17 +266,23 @@ class OfflineQueueStore extends ChangeNotifier {
   Future<void> retryAll({
     required String accessToken,
     required ApiClient apiClient,
+    String? ownerUserId,
   }) async {
     await load();
-    if (_isSyncing || _items.isEmpty) return;
+    final retryItems = List<OfflineQueueItem>.from(
+      _items.where((item) => _matchesOwner(item, ownerUserId)),
+    );
+    if (_isSyncing || retryItems.isEmpty) return;
     _isSyncing = true;
     notifyListeners();
     try {
-      for (final item in List<OfflineQueueItem>.from(_items)) {
+      for (final item in retryItems) {
+        if (!_items.any((queued) => queued.id == item.id)) continue;
         _activeItemId = item.id;
         notifyListeners();
         try {
           await _dispatch(item, accessToken: accessToken, apiClient: apiClient);
+          await _deleteRetainedFile(item);
           _items.removeWhere((queued) => queued.id == item.id);
         } catch (error) {
           final index = _items.indexWhere((queued) => queued.id == item.id);
@@ -255,19 +304,37 @@ class OfflineQueueStore extends ChangeNotifier {
 
   Future<void> remove(String id) async {
     await load();
+    final removed = _items.where((item) => item.id == id).toList();
     _items.removeWhere((item) => item.id == id);
+    await _deleteRetainedFiles(removed);
     await _persist();
   }
 
-  Future<void> clear() async {
+  Future<void> clear({String? ownerUserId}) async {
     await load();
-    _items.clear();
-    await _persist();
+    final removed = _items
+        .where((item) => _matchesOwner(item, ownerUserId))
+        .toList();
+    _items.removeWhere((item) => _matchesOwner(item, ownerUserId));
+    await _deleteRetainedFiles(removed);
+    if (_items.isEmpty) {
+      await _persistence.delete();
+      notifyListeners();
+    } else {
+      await _persist();
+    }
   }
 
-  Future<void> clearFailed() async {
+  Future<void> clearFailed({String? ownerUserId}) async {
     await load();
-    _items.removeWhere(_isFailed);
+    final removed = _items
+        .where((item) => _matchesOwner(item, ownerUserId))
+        .where(_isFailed)
+        .toList();
+    _items.removeWhere(
+      (item) => _matchesOwner(item, ownerUserId) && _isFailed(item),
+    );
+    await _deleteRetainedFiles(removed);
     await _persist();
   }
 
@@ -323,7 +390,7 @@ class OfflineQueueStore extends ChangeNotifier {
             'Queued upload file is missing. Remove this item and record again.',
           );
         }
-        await apiClient.uploadSwingVideo(
+        final session = await apiClient.uploadSwingVideo(
           accessToken: accessToken,
           file: XFile(localPath, name: fileName),
           club: item.payload['club'] as String,
@@ -338,6 +405,14 @@ class OfflineQueueStore extends ChangeNotifier {
           ),
           idempotencyKey: item.id,
         );
+        final localTracerResult = item.payload['local_tracer_result'];
+        if (localTracerResult is Map) {
+          await apiClient.createLocalTracerResult(
+            accessToken: accessToken,
+            sessionId: session.id,
+            payload: Map<String, dynamic>.from(localTracerResult),
+          );
+        }
         await retainedFile.delete();
         return;
       default:
@@ -364,6 +439,26 @@ class OfflineQueueStore extends ChangeNotifier {
     if (notify) notifyListeners();
   }
 
+  Future<void> _deleteRetainedFiles(Iterable<OfflineQueueItem> items) async {
+    for (final item in items) {
+      await _deleteRetainedFile(item);
+    }
+  }
+
+  Future<void> _deleteRetainedFile(OfflineQueueItem item) async {
+    if (item.action != 'upload.swing_video') return;
+    final localPath = item.payload['local_file_path'];
+    if (localPath is! String || localPath.trim().isEmpty) return;
+    final file = File(localPath);
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {
+      // Best-effort cleanup; retry metadata should not be blocked by a stale file.
+    }
+  }
+
   String _newId(String action) {
     final safeAction = action.replaceAll(RegExp(r'[^A-Za-z0-9._:-]'), '-');
     return 'offline-$safeAction-${DateTime.now().microsecondsSinceEpoch}-${_items.length}';
@@ -383,5 +478,10 @@ class OfflineQueueStore extends ChangeNotifier {
 
   bool _isFailed(OfflineQueueItem item) {
     return item.lastError != null && item.lastError!.trim().isNotEmpty;
+  }
+
+  bool _matchesOwner(OfflineQueueItem item, String? ownerUserId) {
+    if (ownerUserId == null) return true;
+    return item.ownerUserId == ownerUserId;
   }
 }

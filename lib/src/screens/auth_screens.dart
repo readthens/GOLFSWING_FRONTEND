@@ -13,9 +13,8 @@ const _configuredDevLoginEmail = String.fromEnvironment('DEV_LOGIN_EMAIL');
 const _configuredDevLoginPassword = String.fromEnvironment(
   'DEV_LOGIN_PASSWORD',
 );
-const _defaultLocalDevLoginEmail =
-    'swinglens.phase6.tracer.validation.1780845971@example.com';
-const _defaultLocalDevLoginPassword = 'LocalSwing!2026-06-07#06';
+const _defaultLocalDevLoginEmail = '';
+const _defaultLocalDevLoginPassword = '';
 const _devLoginEmail = _configuredDevLoginEmail == ''
     ? _defaultLocalDevLoginEmail
     : _configuredDevLoginEmail;
@@ -108,8 +107,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         actionLabel: 'SIGN IN',
         isLoading: auth.state.isLoading,
         error: auth.state.error,
-        onSubmit: () =>
-            ref.read(authControllerProvider).login(_email.text, _password.text),
+        onSubmit: () => ref
+            .read(authControllerProvider)
+            .login(_email.text.trim(), _password.text),
         footer: TextButton(
           onPressed: () => context.go('/auth/sign-up'),
           child: const Text('CREATE PROFILE'),
@@ -165,7 +165,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         error: auth.state.error,
         onSubmit: () => ref
             .read(authControllerProvider)
-            .register(_email.text, _password.text),
+            .register(_email.text.trim(), _password.text),
         footer: TextButton(
           onPressed: () => context.go('/auth/sign-in'),
           child: const Text('I ALREADY HAVE ACCESS'),

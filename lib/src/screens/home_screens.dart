@@ -2656,9 +2656,15 @@ class _RoundDetailScreenState extends ConsumerState<RoundDetailScreen> {
   }
 
   Future<void> _retryOfflineQueue(String token) async {
+    final ownerUserId = ref.read(authControllerProvider).state.user?.id;
+    if (ownerUserId == null) return;
     await ref
         .read(offlineQueueProvider)
-        .retryAll(accessToken: token, apiClient: ref.read(apiClientProvider));
+        .retryAll(
+          accessToken: token,
+          apiClient: ref.read(apiClientProvider),
+          ownerUserId: ownerUserId,
+        );
     if (mounted) await _refresh(token);
   }
 
@@ -2697,6 +2703,12 @@ class _RoundDetailScreenState extends ConsumerState<RoundDetailScreen> {
                   }
                   final round = snapshot.data!;
                   final offlineQueue = ref.watch(offlineQueueProvider);
+                  final ownerUserId = ref
+                      .watch(authControllerProvider)
+                      .state
+                      .user
+                      ?.id;
+                  final queuedCount = offlineQueue.pendingCountFor(ownerUserId);
                   return RefreshIndicator(
                     color: AppColors.textPrimary,
                     backgroundColor: AppColors.elevated,
@@ -2708,9 +2720,9 @@ class _RoundDetailScreenState extends ConsumerState<RoundDetailScreen> {
                       children: [
                         _RoundDetailHeader(round: round),
                         const SizedBox(height: 14),
-                        if (offlineQueue.pendingCount > 0) ...[
+                        if (queuedCount > 0) ...[
                           _OfflineQueuePanel(
-                            pendingCount: offlineQueue.pendingCount,
+                            pendingCount: queuedCount,
                             isSyncing: offlineQueue.isSyncing,
                             onRetry: () => _retryOfflineQueue(token),
                           ),
@@ -3062,6 +3074,7 @@ class _RoundDetailScreenState extends ConsumerState<RoundDetailScreen> {
         .enqueue(
           action: 'round.update',
           title: 'Round edit queued',
+          ownerUserId: ref.read(authControllerProvider).state.user?.id,
           payload: {'round_id': roundId, 'fields': fields},
         );
     if (!mounted) return;
@@ -3080,6 +3093,7 @@ class _RoundDetailScreenState extends ConsumerState<RoundDetailScreen> {
         .enqueue(
           action: 'round.hole.update',
           title: 'Hole $holeNumber score queued',
+          ownerUserId: ref.read(authControllerProvider).state.user?.id,
           payload: {
             'round_id': roundId,
             'hole_number': holeNumber,
@@ -4260,6 +4274,8 @@ class ProfileHubScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider).state;
     final offlineQueue = ref.watch(offlineQueueProvider);
+    final ownerUserId = auth.user?.id;
+    final queuedCount = offlineQueue.pendingCountFor(ownerUserId);
     final profile = auth.profile;
     final goals = profile == null || profile.goals.isEmpty
         ? 'NONE SET'
@@ -4316,9 +4332,9 @@ class ProfileHubScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               PanelButton(
                 title: 'SYNC CENTER',
-                subtitle: offlineQueue.pendingCount == 0
+                subtitle: queuedCount == 0
                     ? 'No offline uploads or edits waiting.'
-                    : '${offlineQueue.pendingCount} pending uploads or edits.',
+                    : '$queuedCount pending uploads or edits.',
                 onPressed: () => context.go('/profile/sync'),
               ),
               const SizedBox(height: 12),
@@ -4357,8 +4373,13 @@ class SyncCenterScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final token = ref.watch(authControllerProvider).state.accessToken;
+    final auth = ref.watch(authControllerProvider).state;
+    final token = auth.accessToken;
+    final ownerUserId = auth.user?.id;
     final queue = ref.watch(offlineQueueProvider);
+    final ownerItems = queue.itemsFor(ownerUserId);
+    final pendingCount = queue.pendingCountFor(ownerUserId);
+    final failedCount = queue.failedCountFor(ownerUserId);
     return AppScaffold(
       child: SafeArea(
         child: ListView(
@@ -4387,20 +4408,18 @@ class SyncCenterScreen extends ConsumerWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        queue.isSyncing
-                            ? 'SYNCING'
-                            : '${queue.pendingCount} PENDING',
+                        queue.isSyncing ? 'SYNCING' : '$pendingCount PENDING',
                         style: AppTextStyles.label,
                       ),
                     ),
                   ],
                 ),
                 Text(
-                  queue.pendingCount == 0
+                  pendingCount == 0
                       ? 'No device-local changes are waiting.'
-                      : queue.failedCount == 0
+                      : failedCount == 0
                       ? 'These items use stable request IDs so a retry does not duplicate accepted backend writes.'
-                      : '${queue.failedCount} failed item${queue.failedCount == 1 ? '' : 's'} need review. Remove stale failures or retry after fixing the issue.',
+                      : '$failedCount failed item${failedCount == 1 ? '' : 's'} need review. Remove stale failures or retry after fixing the issue.',
                   style: AppTextStyles.body.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -4408,11 +4427,12 @@ class SyncCenterScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 14),
-            if (queue.pendingCount > 0) ...[
+            if (pendingCount > 0) ...[
               PrimaryButton(
                 key: const ValueKey('sync-center-retry-all-button'),
                 label: queue.isSyncing ? 'SYNCING' : 'RETRY ALL',
-                onPressed: token == null || queue.isSyncing
+                onPressed:
+                    token == null || ownerUserId == null || queue.isSyncing
                     ? null
                     : () async {
                         await ref
@@ -4420,29 +4440,32 @@ class SyncCenterScreen extends ConsumerWidget {
                             .retryAll(
                               accessToken: token,
                               apiClient: ref.read(apiClientProvider),
+                              ownerUserId: ownerUserId,
                             );
                       },
               ),
-              if (queue.failedCount > 0) ...[
+              if (failedCount > 0) ...[
                 const SizedBox(height: 12),
                 GhostButton(
                   key: const ValueKey('sync-center-clear-failed-button'),
                   label: 'CLEAR FAILED',
                   onPressed: queue.isSyncing
                       ? null
-                      : () => ref.read(offlineQueueProvider).clearFailed(),
+                      : () => ref
+                            .read(offlineQueueProvider)
+                            .clearFailed(ownerUserId: ownerUserId),
                 ),
               ],
               const SizedBox(height: 16),
             ],
-            if (queue.pendingCount == 0)
+            if (pendingCount == 0)
               const EmptyState(
                 title: 'NO PENDING SYNC',
                 body:
                     'Offline uploads and edits will appear here when the network is unavailable.',
               )
             else
-              for (final item in queue.items) ...[
+              for (final item in ownerItems) ...[
                 _SyncQueueRow(item: item, status: queue.statusFor(item)),
                 const SizedBox(height: 12),
               ],

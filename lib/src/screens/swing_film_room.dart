@@ -38,6 +38,7 @@ class SwingFilmRoom extends ConsumerStatefulWidget {
 class _SwingFilmRoomState extends ConsumerState<SwingFilmRoom> {
   AnalysisOverlayTrack? _track;
   VideoPlayerController? _controller;
+  File? _tempVideoFile;
   bool _isLoading = true;
   String? _error;
   String? _playbackMessage;
@@ -55,6 +56,7 @@ class _SwingFilmRoomState extends ConsumerState<SwingFilmRoom> {
         oldWidget.video.id != widget.video.id ||
         oldWidget.accessToken != widget.accessToken) {
       unawaited(_controller?.dispose());
+      unawaited(_deleteTempVideo());
       _controller = null;
       _track = null;
       _error = null;
@@ -67,6 +69,7 @@ class _SwingFilmRoomState extends ConsumerState<SwingFilmRoom> {
   @override
   void dispose() {
     unawaited(_controller?.dispose());
+    unawaited(_deleteTempVideo());
     super.dispose();
   }
 
@@ -88,6 +91,7 @@ class _SwingFilmRoomState extends ConsumerState<SwingFilmRoom> {
         final destination = File(
           '${tempDir.path}/swinglens_${widget.video.id}.mp4',
         );
+        _tempVideoFile = destination;
         await api.downloadSwingVideoFile(
           accessToken: widget.accessToken,
           videoId: widget.video.id,
@@ -119,6 +123,17 @@ class _SwingFilmRoomState extends ConsumerState<SwingFilmRoom> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _deleteTempVideo() async {
+    final file = _tempVideoFile;
+    _tempVideoFile = null;
+    if (file == null) return;
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
 
   @override
@@ -555,6 +570,7 @@ class SwingVideoPreviewSurface extends ConsumerStatefulWidget {
 class _SwingVideoPreviewSurfaceState
     extends ConsumerState<SwingVideoPreviewSurface> {
   VideoPlayerController? _controller;
+  File? _tempVideoFile;
   String? _message;
 
   @override
@@ -569,6 +585,7 @@ class _SwingVideoPreviewSurfaceState
     if (oldWidget.video.id != widget.video.id ||
         oldWidget.accessToken != widget.accessToken) {
       unawaited(_controller?.dispose());
+      unawaited(_deleteTempVideo());
       _controller = null;
       _message = null;
       unawaited(_load());
@@ -578,6 +595,7 @@ class _SwingVideoPreviewSurfaceState
   @override
   void dispose() {
     unawaited(_controller?.dispose());
+    unawaited(_deleteTempVideo());
     super.dispose();
   }
 
@@ -587,6 +605,7 @@ class _SwingVideoPreviewSurfaceState
       final destination = File(
         '${tempDir.path}/swinglens_preview_${widget.video.id}.mp4',
       );
+      _tempVideoFile = destination;
       await ref
           .read(apiClientProvider)
           .downloadSwingVideoFile(
@@ -609,6 +628,17 @@ class _SwingVideoPreviewSurfaceState
       if (!mounted) return;
       setState(() => _message = 'VIDEO PREVIEW UNAVAILABLE');
     }
+  }
+
+  Future<void> _deleteTempVideo() async {
+    final file = _tempVideoFile;
+    _tempVideoFile = null;
+    if (file == null) return;
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
 
   @override

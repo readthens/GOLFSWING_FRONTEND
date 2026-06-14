@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_client.dart';
+import '../auth/auth_controller.dart';
 import '../models.dart';
 import '../offline/offline_queue.dart';
 import 'app_chrome.dart';
@@ -135,10 +136,12 @@ class _FavoriteToggleButtonState extends ConsumerState<FavoriteToggleButton> {
 
   Future<void> _queueFavoriteToggle({FavoriteItem? existing}) async {
     final queue = ref.read(offlineQueueProvider);
+    final ownerUserId = ref.read(authControllerProvider).state.user?.id;
     if (existing == null) {
       await queue.enqueue(
         action: 'favorite.save',
         title: '${widget.saveLabel} queued',
+        ownerUserId: ownerUserId,
         payload: {
           'entity_type': widget.entityType,
           'entity_id': widget.entityId,
@@ -149,6 +152,7 @@ class _FavoriteToggleButtonState extends ConsumerState<FavoriteToggleButton> {
       await queue.enqueue(
         action: 'favorite.delete',
         title: '${widget.savedLabel} removal queued',
+        ownerUserId: ownerUserId,
         payload: {'favorite_id': existing.id},
       );
     }
