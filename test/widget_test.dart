@@ -2656,7 +2656,7 @@ void main() {
     expect(find.textContaining('QUALITY PASS'), findsNothing);
   });
 
-  testWidgets('shot tracer start opens existing camera-first capture', (
+  testWidgets('shot tracer start opens camera-only capture', (
     WidgetTester tester,
   ) async {
     await pumpSwingLensApp(
@@ -2674,18 +2674,20 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(
-      find.byKey(const ValueKey('tracer-camera-capture-frame')),
+      find.byKey(const ValueKey('tracer-camera-only-preview')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey('tracer-existing-record-button')),
+      find.byKey(const ValueKey('tracer-camera-main-record')),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('bottom-nav-bar')), findsNothing);
     expect(find.text('IMPORT VIDEO'), findsNothing);
     expect(find.text('CHOOSE VIDEO'), findsNothing);
-    expect(find.text('GUIDE LOCK'), findsOneWidget);
-    expect(find.text('UPLOAD TRACER VIDEO'), findsOneWidget);
+    expect(find.text('GUIDE LOCK'), findsNothing);
+    expect(find.text('CLUB'), findsNothing);
+    expect(find.text('LOCATION'), findsNothing);
+    expect(find.text('UPLOAD TRACER VIDEO'), findsNothing);
   });
 
   testWidgets('rounds tab renders saved scorecards and opens detail', (

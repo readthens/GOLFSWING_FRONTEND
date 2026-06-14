@@ -143,7 +143,6 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     if (_isTracerCameraEntry) {
       return _buildTracerCameraFirstScreen(
         auth: auth,
-        qualityChecks: qualityChecks,
         hasHardFailure: hasHardFailure,
         tracerReadiness: tracerReadiness,
       );
@@ -275,142 +274,53 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
 
   Widget _buildTracerCameraFirstScreen({
     required AuthState auth,
-    required List<_LocalQualityCheck> qualityChecks,
     required bool hasHardFailure,
     required TracerReadinessResult tracerReadiness,
   }) {
     final handedness = auth.profile?.handedness?.toLowerCase() ?? 'right';
     final cameraReady = _cameraController?.value.isInitialized ?? false;
+    final fileReady = _file != null;
     final recordEnabled =
-        !_isInitializingCamera &&
-        cameraReady &&
-        (_isRecording || tracerReadiness.canRecord);
+        _isRecording || (!_isInitializingCamera && cameraReady && !fileReady);
     final recordLabel = _tracerRecordLabel(cameraReady, tracerReadiness);
-    return AppScaffold(
-      child: SafeArea(
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 34),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Back',
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () => context.go('/tracer'),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'SHOT TRACER',
-                      style: AppTextStyles.title.copyWith(fontSize: 28),
-                    ),
-                  ),
-                  _TracerCameraPill(
-                    label: _nativeCaptureCapabilities.highFpsCaptureAvailable
-                        ? 'HIGH FPS'
-                        : 'CAMERA',
-                    active: cameraReady,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Rear camera capture with live guide framing. Import video stays on the Shot Tracer intro.',
-                style: AppTextStyles.body.copyWith(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 18),
-              _TracerCameraPreviewFrame(
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: _TracerCameraOnlyPreview(
+                angle: _angle,
+                cameraController: _cameraController,
+                videoController: _videoController,
+                file: _file,
+                isRecording: _isRecording,
                 status: _tracerLiveStatus(cameraReady, tracerReadiness),
                 timer: _tracerRecordingTimerLabel,
-                recording: _isRecording,
-                child: _CapturePreview(
-                  angle: _angle,
-                  cameraController: _cameraController,
-                  videoController: _videoController,
-                  file: _file,
-                  isRecording: _isRecording,
-                  tracerMode: _isTracerMode,
-                  tracerBallAnchor: _tracerBallAnchor,
-                  tracerTargetPoint: _tracerTargetPoint,
-                  tracerStyle: _tracerStyle,
-                  tracerPointMode: _tracerPointMode,
-                  handedness: handedness,
-                  aspectRatio: 9 / 14,
-                  borderRadius: 22,
-                  onTracerPointChanged: _updateTracerPoint,
-                ),
+                cameraNotice: _cameraNotice ?? _mediaNotice ?? _error,
+                tracerBallAnchor: _tracerBallAnchor,
+                tracerTargetPoint: _tracerTargetPoint,
+                tracerStyle: _tracerStyle,
+                tracerPointMode: _tracerPointMode,
+                handedness: handedness,
+                onBack: () => context.go('/tracer'),
+                onTracerPointChanged: _updateTracerPoint,
               ),
-              const SizedBox(height: 16),
-              _TracerCameraChecklist(
-                readiness: tracerReadiness,
-                cameraReady: cameraReady,
-                impactWindowActive: _tracerImpactWindowActive,
-                highFpsAvailable:
-                    _nativeCaptureCapabilities.highFpsCaptureAvailable,
-              ),
-              const SizedBox(height: 16),
-              _TracerCameraRecordDeck(
-                label: recordLabel,
-                recording: _isRecording,
-                enabled: recordEnabled,
-                onPressed: _recordOrStop,
-              ),
-              if (_cameraNotice != null) ...[
-                const SizedBox(height: 12),
-                InfoPanel(children: [Text(_cameraNotice!)]),
-              ],
-              const SizedBox(height: 18),
-              _TracerCameraSetupBar(
-                pointMode: _tracerPointMode,
-                whiteBallConfirmed: _whiteBallConfirmed,
-                onPointModeChanged: (value) =>
-                    setState(() => _tracerPointMode = value),
-                onWhiteBallChanged: (value) =>
-                    setState(() => _whiteBallConfirmed = value),
-              ),
-              const SizedBox(height: 18),
-              const Text('CLUB', style: AppTextStyles.label),
-              const SizedBox(height: 10),
-              SegmentedChoices(
-                values: _clubChoices,
-                selected: _club,
-                onSelected: (value) => setState(() => _club = value),
-              ),
-              const SizedBox(height: 18),
-              const Text('LOCATION', style: AppTextStyles.label),
-              const SizedBox(height: 10),
-              SegmentedChoices(
-                values: const ['range', 'course', 'indoor', 'net'],
-                selected: _locationType,
-                onSelected: (value) => setState(() => _locationType = value),
-              ),
-              if (_file != null) ...[
-                const SizedBox(height: 18),
-                _buildTracerCameraReviewPanel(qualityChecks, tracerReadiness),
-              ],
-              if (_mediaNotice != null) ...[
-                const SizedBox(height: 12),
-                InfoPanel(children: [Text(_mediaNotice!)]),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                ErrorText(_error!),
-              ],
-              const SizedBox(height: 14),
-              PrimaryButton(
-                label: _isUploading ? 'UPLOADING' : 'UPLOAD TRACER VIDEO',
-                onPressed: _file == null || hasHardFailure || _isUploading
-                    ? null
-                    : () => _upload(auth.accessToken),
-              ),
-            ],
-          ),
+            ),
+            _TracerCameraControls(
+              fileReady: fileReady,
+              recording: _isRecording,
+              uploading: _isUploading,
+              recordEnabled: recordEnabled,
+              uploadEnabled: fileReady && !hasHardFailure && !_isUploading,
+              recordLabel: recordLabel,
+              status: _tracerLiveStatus(cameraReady, tracerReadiness),
+              onRecord: _recordOrStop,
+              onRetake: _retakeTracerCapture,
+              onUseVideo: () => _upload(auth.accessToken),
+            ),
+          ],
         ),
       ),
     );
@@ -478,19 +388,22 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   }
 
   String _tracerRecordLabel(bool cameraReady, TracerReadinessResult readiness) {
+    if (_file != null) return 'VIDEO READY';
     if (_isRecording) return 'STOP RECORDING';
     if (_isInitializingCamera) return 'OPENING CAMERA';
     if (!cameraReady) return 'CAMERA UNAVAILABLE';
+    if (_isTracerCameraEntry) return 'TAP TO RECORD';
     if (!readiness.canRecord) return 'HOLD FRAME STEADY';
     return 'START RECORDING';
   }
 
   String _tracerLiveStatus(bool cameraReady, TracerReadinessResult readiness) {
-    if (_file != null) return 'READY TO UPLOAD';
+    if (_file != null) return 'VIDEO READY';
     if (_isRecording && _tracerImpactWindowActive) return 'IMPACT WINDOW';
     if (_isRecording) return 'WAITING FOR IMPACT';
     if (_isInitializingCamera) return 'OPENING CAMERA';
     if (!cameraReady) return 'CAMERA UNAVAILABLE';
+    if (_isTracerCameraEntry) return 'SHOT TRACER';
     if (readiness.canRecord) return 'RANGE READY';
     return 'LOCK BALL AND TARGET';
   }
@@ -560,30 +473,6 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
             message: check.message,
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildTracerCameraReviewPanel(
-    List<_LocalQualityCheck> qualityChecks,
-    TracerReadinessResult tracerReadiness,
-  ) {
-    final blockingIssues = qualityChecks
-        .where((check) => check.severity == 'fail')
-        .toList(growable: false);
-    return InfoPanel(
-      children: [
-        const Text('CAPTURE READY', style: AppTextStyles.label),
-        Text('SOURCE: ${_source.toUpperCase()}'),
-        Text('DURATION: ${_formatDuration(_durationMs).toUpperCase()}'),
-        Text('RESOLUTION: ${_formatResolution().toUpperCase()}'),
-        Text(
-          'AUTO TRACKING: ${tracerReadiness.autoEligible ? 'ELIGIBLE' : 'VISUAL REVIEW'}',
-        ),
-        if (blockingIssues.isEmpty)
-          const Text('Upload this take to create the visual tracer.')
-        else
-          for (final issue in blockingIssues) Text(issue.message),
       ],
     );
   }
@@ -692,13 +581,37 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     await _startRecording();
   }
 
+  Future<void> _retakeTracerCapture() async {
+    await _videoController?.dispose();
+    if (!mounted) return;
+    setState(() {
+      _file = null;
+      _videoController = null;
+      _byteSize = null;
+      _durationMs = null;
+      _resolutionWidth = null;
+      _resolutionHeight = null;
+      _mediaNotice = null;
+      _error = null;
+      _source = 'camera';
+      _guideOverlay = true;
+      _tracerImpactWindowActive = false;
+      _tracerRecordingTenths = 0;
+      _recordedTracerReadinessChecks = const {};
+      _recordedStableDurationMs = null;
+    });
+    if (!(_cameraController?.value.isInitialized ?? false)) {
+      await _initializeCamera();
+    }
+  }
+
   Future<void> _startRecording() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       await _initializeCamera();
     }
     final controller = _cameraController;
     if (controller == null || !controller.value.isInitialized) return;
-    if (_isTracerMode && !_tracerReadiness.canRecord) {
+    if (_isTracerMode && !_isTracerCameraEntry && !_tracerReadiness.canRecord) {
       setState(() {
         _cameraNotice =
             'Complete the tracer readiness checks before recording.';
@@ -755,8 +668,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       _startTracerRecordingClock();
     } catch (_) {
       setState(() {
-        _cameraNotice =
-            'Camera recording is unavailable on this device. Choose a saved video instead.';
+        _cameraNotice = _isTracerCameraEntry
+            ? 'Camera recording is unavailable here. Return to Shot Tracer to import a video.'
+            : 'Camera recording is unavailable on this device. Choose a saved video instead.';
       });
     }
   }
@@ -799,8 +713,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
         setState(() {
           _isRecording = false;
           _isNativeTracerRecording = false;
-          _cameraNotice =
-              'Native high-FPS recording could not be saved. Try recording again.';
+          _cameraNotice = _isTracerCameraEntry
+              ? 'Native high-FPS recording could not be saved. Try recording again or return to Shot Tracer to import a video.'
+              : 'Native high-FPS recording could not be saved. Try recording again.';
         });
       }
       return;
@@ -822,8 +737,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     } catch (_) {
       setState(() {
         _isRecording = false;
-        _cameraNotice =
-            'Recording could not be saved. Choose a saved video or try recording again.';
+        _cameraNotice = _isTracerCameraEntry
+            ? 'Recording could not be saved. Try recording again or return to Shot Tracer to import a video.'
+            : 'Recording could not be saved. Choose a saved video or try recording again.';
       });
     }
   }
@@ -838,8 +754,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         setState(() {
-          _cameraNotice =
-              'No camera is available here. Choose a saved video to keep testing.';
+          _cameraNotice = _isTracerCameraEntry
+              ? 'No camera is available here. Return to Shot Tracer to import a video.'
+              : 'No camera is available here. Choose a saved video to keep testing.';
           _isInitializingCamera = false;
           _nativeHighFpsAvailable = capabilities.highFpsCaptureAvailable;
           _nativeCaptureCapabilities = capabilities;
@@ -872,8 +789,9 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _cameraNotice =
-            'Camera is unavailable here. Choose a saved video to keep testing.';
+        _cameraNotice = _isTracerCameraEntry
+            ? 'Camera is unavailable here. Return to Shot Tracer to import a video.'
+            : 'Camera is unavailable here. Choose a saved video to keep testing.';
         _isInitializingCamera = false;
       });
     }
@@ -1408,66 +1326,178 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
   }
 }
 
-class _TracerCameraPreviewFrame extends StatelessWidget {
-  const _TracerCameraPreviewFrame({
-    required this.child,
+class _TracerCameraOnlyPreview extends StatelessWidget {
+  const _TracerCameraOnlyPreview({
+    required this.angle,
+    required this.cameraController,
+    required this.videoController,
+    required this.file,
+    required this.isRecording,
     required this.status,
     required this.timer,
-    required this.recording,
+    required this.cameraNotice,
+    required this.tracerBallAnchor,
+    required this.tracerTargetPoint,
+    required this.tracerStyle,
+    required this.tracerPointMode,
+    required this.handedness,
+    required this.onBack,
+    required this.onTracerPointChanged,
   });
 
-  final Widget child;
+  final String angle;
+  final CameraController? cameraController;
+  final VideoPlayerController? videoController;
+  final XFile? file;
+  final bool isRecording;
   final String status;
   final String timer;
-  final bool recording;
+  final String? cameraNotice;
+  final Offset tracerBallAnchor;
+  final Offset tracerTargetPoint;
+  final String tracerStyle;
+  final String tracerPointMode;
+  final String handedness;
+  final VoidCallback onBack;
+  final ValueChanged<Offset> onTracerPointChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey('tracer-camera-capture-frame'),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF7CFF9B).withValues(alpha: 0.12),
-            blurRadius: 28,
-            spreadRadius: -12,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          child,
-          Positioned(
-            left: 16,
-            right: 16,
-            top: 14,
-            child: Row(
-              children: [
-                _TracerCameraPill(label: status, active: recording),
-                const Spacer(),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.52),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0x20FFFFFF)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
-                    child: Text(
-                      timer,
-                      style: AppTextStyles.micro.copyWith(
-                        fontSize: 12,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ),
+    final cameraReady = cameraController?.value.isInitialized ?? false;
+    final videoReady = videoController?.value.isInitialized ?? false;
+    return ClipRect(
+      key: const ValueKey('tracer-camera-only-preview'),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(color: Colors.black),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (cameraReady && file == null)
+              CameraPreview(cameraController!)
+            else if (videoReady)
+              _FullBleedVideoPreview(controller: videoController!)
+            else
+              _CameraOnlyPlaceholder(status: status),
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xB8000000),
+                    Color(0x18000000),
+                    Color(0xD8000000),
+                  ],
+                  stops: [0, 0.46, 1],
                 ),
-              ],
+              ),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTapDown: (details) =>
+                  _handleTracerPoint(details.localPosition, context),
+              onPanUpdate: (details) =>
+                  _handleTracerPoint(details.localPosition, context),
+              child: CustomPaint(
+                painter: _CaptureGuidePainter(
+                  angle: angle,
+                  isRecording: isRecording,
+                  tracerMode: true,
+                  tracerBallAnchor: tracerBallAnchor,
+                  tracerTargetPoint: tracerTargetPoint,
+                  tracerStyle: tracerStyle,
+                  tracerPointMode: tracerPointMode,
+                  handedness: handedness,
+                ),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              top: 10,
+              child: _TracerCameraHud(
+                status: status,
+                timer: timer,
+                recording: isRecording,
+                onBack: onBack,
+              ),
+            ),
+            if (cameraNotice != null)
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: 18,
+                child: _CameraOnlyNotice(message: cameraNotice!),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleTracerPoint(Offset localPosition, BuildContext context) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || box.size.isEmpty) return;
+    onTracerPointChanged(
+      Offset(
+        localPosition.dx / box.size.width,
+        localPosition.dy / box.size.height,
+      ),
+    );
+  }
+}
+
+class _FullBleedVideoPreview extends StatelessWidget {
+  const _FullBleedVideoPreview({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = controller.value.size;
+    if (size.isEmpty) return VideoPlayer(controller);
+    return GestureDetector(
+      onTap: () {
+        if (controller.value.isPlaying) {
+          controller.pause();
+        } else {
+          controller.play();
+        }
+      },
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: size.width,
+          height: size.height,
+          child: VideoPlayer(controller),
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraOnlyPlaceholder extends StatelessWidget {
+  const _CameraOnlyPlaceholder({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.videocam_outlined,
+            size: 54,
+            color: AppColors.textSecondary.withValues(alpha: 0.72),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            status,
+            style: AppTextStyles.label.copyWith(
+              color: AppColors.textPrimary,
+              letterSpacing: 1.2,
             ),
           ),
         ],
@@ -1476,8 +1506,54 @@ class _TracerCameraPreviewFrame extends StatelessWidget {
   }
 }
 
-class _TracerCameraPill extends StatelessWidget {
-  const _TracerCameraPill({required this.label, this.active = false});
+class _TracerCameraHud extends StatelessWidget {
+  const _TracerCameraHud({
+    required this.status,
+    required this.timer,
+    required this.recording,
+    required this.onBack,
+  });
+
+  final String status;
+  final String timer;
+  final bool recording;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          key: const ValueKey('tracer-camera-back'),
+          tooltip: 'Back',
+          onPressed: onBack,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.black.withValues(alpha: 0.5),
+            foregroundColor: AppColors.textPrimary,
+          ),
+          icon: const Icon(Icons.close),
+        ),
+        Expanded(
+          child: Center(
+            child: Text(
+              timer,
+              style: AppTextStyles.title.copyWith(
+                fontSize: 24,
+                height: 1,
+                letterSpacing: 1.4,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        _TracerCameraHudPill(label: status, active: recording),
+      ],
+    );
+  }
+}
+
+class _TracerCameraHudPill extends StatelessWidget {
+  const _TracerCameraHudPill({required this.label, required this.active});
 
   final String label;
   final bool active;
@@ -1486,277 +1562,200 @@ class _TracerCameraPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.52),
+        color: Colors.black.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: active ? const Color(0x669FE870) : const Color(0x22FFFFFF),
+          color: active ? const Color(0x88FF5B5B) : const Color(0x24FFFFFF),
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Text(
-          label,
+          active ? 'REC' : label,
           style: AppTextStyles.micro.copyWith(
-            color: active ? const Color(0xFF9FE870) : AppColors.textPrimary,
+            color: active ? AppColors.signalRed : AppColors.textPrimary,
             fontSize: 10,
-            letterSpacing: 0.75,
+            letterSpacing: 0.9,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
   }
 }
 
-class _TracerCameraChecklist extends StatelessWidget {
-  const _TracerCameraChecklist({
-    required this.readiness,
-    required this.cameraReady,
-    required this.impactWindowActive,
-    required this.highFpsAvailable,
-  });
+class _CameraOnlyNotice extends StatelessWidget {
+  const _CameraOnlyNotice({required this.message});
 
-  final TracerReadinessResult readiness;
-  final bool cameraReady;
-  final bool impactWindowActive;
-  final bool highFpsAvailable;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey('tracer-camera-readiness-card'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.panel,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _TracerReadinessChip(
-                  label: 'REAR CAMERA',
-                  ready: cameraReady,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _TracerReadinessChip(
-                  label: 'HIGH FPS',
-                  ready: highFpsAvailable,
-                  softReady: !highFpsAvailable,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _TracerReadinessChip(
-                  label: 'BALL',
-                  ready: readiness.checks['white_ball_confirmed'] == true,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _TracerReadinessChip(
-                  label: 'TARGET',
-                  ready: readiness.checks['target_line_set'] == true,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _TracerReadinessChip(
-                  label: 'IMPACT',
-                  ready: impactWindowActive,
-                  softReady: !impactWindowActive,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TracerReadinessChip extends StatelessWidget {
-  const _TracerReadinessChip({
-    required this.label,
-    required this.ready,
-    this.softReady = false,
-  });
-
-  final String label;
-  final bool ready;
-  final bool softReady;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = ready
-        ? const Color(0xFF9FE870)
-        : softReady
-        ? AppColors.signalGold
-        : AppColors.textMuted;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        color: Colors.black.withValues(alpha: 0.68),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0x24FFFFFF)),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: AppTextStyles.body.copyWith(
+            color: AppColors.textSecondary,
+            fontSize: 12,
+            height: 1.35,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TracerCameraControls extends StatelessWidget {
+  const _TracerCameraControls({
+    required this.fileReady,
+    required this.recording,
+    required this.uploading,
+    required this.recordEnabled,
+    required this.uploadEnabled,
+    required this.recordLabel,
+    required this.status,
+    required this.onRecord,
+    required this.onRetake,
+    required this.onUseVideo,
+  });
+
+  final bool fileReady;
+  final bool recording;
+  final bool uploading;
+  final bool recordEnabled;
+  final bool uploadEnabled;
+  final String recordLabel;
+  final String status;
+  final VoidCallback onRecord;
+  final VoidCallback onRetake;
+  final VoidCallback onUseVideo;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return DecoratedBox(
+      key: const ValueKey('tracer-camera-control-bar'),
+      decoration: const BoxDecoration(
+        color: Color(0xFF050505),
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          22,
+          16,
+          22,
+          math.max(18.0, bottomInset + 14.0),
+        ),
+        child: fileReady ? _buildReviewActions() : _buildRecordActions(),
+      ),
+    );
+  }
+
+  Widget _buildRecordActions() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _CameraRecordButton(
+          recording: recording,
+          enabled: recordEnabled,
+          onPressed: onRecord,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          recordLabel,
+          style: AppTextStyles.label.copyWith(
+            color: recordEnabled ? AppColors.textPrimary : AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          status,
+          style: AppTextStyles.micro.copyWith(
+            color: AppColors.textMuted,
+            letterSpacing: 0.8,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReviewActions() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          uploading ? 'UPLOADING' : 'VIDEO READY',
+          style: AppTextStyles.label.copyWith(color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 14),
+        Row(
           children: [
-            Icon(
-              ready ? Icons.check_circle_outline : Icons.circle_outlined,
-              color: color,
-              size: 14,
+            Expanded(
+              child: GhostButton(label: 'RETAKE', onPressed: onRetake),
             ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                style: AppTextStyles.micro.copyWith(
-                  color: color,
-                  fontSize: 9,
-                  letterSpacing: 0.55,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            const SizedBox(width: 12),
+            Expanded(
+              child: PrimaryButton(
+                label: uploading ? 'UPLOADING' : 'USE VIDEO',
+                onPressed: uploadEnabled ? onUseVideo : null,
               ),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
 
-class _TracerCameraRecordDeck extends StatelessWidget {
-  const _TracerCameraRecordDeck({
-    required this.label,
+class _CameraRecordButton extends StatelessWidget {
+  const _CameraRecordButton({
     required this.recording,
     required this.enabled,
     required this.onPressed,
   });
 
-  final String label;
   final bool recording;
   final bool enabled;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.44),
-        border: Border.all(color: const Color(0x22FFFFFF)),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            key: const ValueKey('tracer-existing-record-button'),
-            onTap: enabled ? onPressed : null,
-            borderRadius: BorderRadius.circular(999),
+    final activeColor = recording ? AppColors.signalRed : AppColors.signalRed;
+    return GestureDetector(
+      key: const ValueKey('tracer-camera-main-record'),
+      onTap: enabled ? onPressed : null,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 160),
+        opacity: enabled ? 1 : 0.46,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: 92,
+          height: 92,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.textPrimary, width: 6),
+          ),
+          child: Center(
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: 96,
-              height: 96,
+              width: recording ? 34 : 68,
+              height: recording ? 34 : 68,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: enabled ? AppColors.textPrimary : AppColors.textMuted,
-                  width: 6,
-                ),
-              ),
-              child: Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: recording ? 38 : 72,
-                  height: recording ? 38 : 72,
-                  decoration: BoxDecoration(
-                    color: enabled ? AppColors.signalRed : AppColors.textMuted,
-                    borderRadius: BorderRadius.circular(recording ? 10 : 999),
-                  ),
-                ),
+                color: activeColor,
+                borderRadius: BorderRadius.circular(recording ? 9 : 999),
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: AppTextStyles.label.copyWith(
-              color: enabled ? AppColors.textPrimary : AppColors.textMuted,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            recording
-                ? 'Keep the phone locked behind the ball until the shot is away.'
-                : 'Record from behind the ball. SwingLens will use this clip for the visual tracer.',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.body.copyWith(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-              height: 1.35,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TracerCameraSetupBar extends StatelessWidget {
-  const _TracerCameraSetupBar({
-    required this.pointMode,
-    required this.whiteBallConfirmed,
-    required this.onPointModeChanged,
-    required this.onWhiteBallChanged,
-  });
-
-  final String pointMode;
-  final bool whiteBallConfirmed;
-  final ValueChanged<String> onPointModeChanged;
-  final ValueChanged<bool> onWhiteBallChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.panel,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('GUIDE LOCK', style: AppTextStyles.label),
-          const SizedBox(height: 10),
-          SegmentedChoices(
-            values: const ['ball', 'target'],
-            selected: pointMode,
-            onSelected: onPointModeChanged,
-          ),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            value: whiteBallConfirmed,
-            onChanged: (value) => onWhiteBallChanged(value ?? false),
-            title: const Text('WHITE BALL VISIBLE'),
-            subtitle: const Text('Required for automatic visual tracking.'),
-            controlAffinity: ListTileControlAffinity.leading,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1775,8 +1774,6 @@ class _CapturePreview extends StatelessWidget {
     required this.tracerStyle,
     required this.tracerPointMode,
     required this.handedness,
-    this.aspectRatio = 9 / 13,
-    this.borderRadius = 8,
     this.onTracerPointChanged,
   });
 
@@ -1791,8 +1788,6 @@ class _CapturePreview extends StatelessWidget {
   final String tracerStyle;
   final String tracerPointMode;
   final String handedness;
-  final double aspectRatio;
-  final double borderRadius;
   final ValueChanged<Offset>? onTracerPointChanged;
 
   @override
@@ -1800,9 +1795,9 @@ class _CapturePreview extends StatelessWidget {
     final cameraReady = cameraController?.value.isInitialized ?? false;
     final videoReady = videoController?.value.isInitialized ?? false;
     return AspectRatio(
-      aspectRatio: aspectRatio,
+      aspectRatio: 9 / 13,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(borderRadius),
+        borderRadius: BorderRadius.circular(8),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.black,

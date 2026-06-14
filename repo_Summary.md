@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-14 Shot Tracer Camera-Only Capture Correction
+
+- Replaced the Shot Tracer `cameraFirst` upload presentation with a fixed camera-only capture surface: full-height preview, minimal top HUD, and iPhone-camera-style bottom record/use-video controls.
+- Removed the scroll-heavy setup content from `START TRACER CAMERA`: no import/choose video, club/location selectors, guide-lock card, readiness card, or below-fold upload panel on the camera entry.
+- Kept `/tracer/new` routed through the existing `/capture/tracer?camera=1` upload pipeline so real camera recording, native high-FPS capture, retake, upload/offline queueing, and tracer metadata remain intact.
+- Preserved `/capture/tracer` as the import/setup route for gallery videos and tightened camera-unavailable copy to send users back to the Shot Tracer intro for import.
+- Validated with focused Shot Tracer widget tests, `flutter analyze`, full `flutter test` (`79 passed`), `git diff --check`, and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-13 Shot Tracer Camera Flow Correction
 
 - Removed the separate `/tracer/camera` screen and restored Shot Tracer start behavior to the existing tracer capture pipeline.
