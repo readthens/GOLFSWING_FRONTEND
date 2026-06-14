@@ -2681,7 +2681,12 @@ void main() {
       find.byKey(const ValueKey('tracer-camera-main-record')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('tracer-capture-prompt-chip')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('bottom-nav-bar')), findsNothing);
+    expect(find.text('CAMERA UNAVAILABLE').evaluate().length <= 1, isTrue);
     expect(find.text('IMPORT VIDEO'), findsNothing);
     expect(find.text('CHOOSE VIDEO'), findsNothing);
     expect(find.text('GUIDE LOCK'), findsNothing);

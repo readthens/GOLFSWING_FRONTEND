@@ -1,5 +1,13 @@
 # Frontend Repo Summary
 
+## 2026-06-14 Shot Tracer Smart Guidance Overlay
+
+- Replaced the camera-first Shot Tracer overlay drawing with a premium smart guidance system: softened golfer ghost guide, subtle target guide line, ball anchor marker, target marker, labels, and dimmed fallback rendering.
+- Added adaptive capture prompt copy for the HUD pill, including `MOVE CLOSER`, `MOVE FARTHER`, `CENTER GOLFER`, `BALL NOT DETECTED`, `ALIGN TARGET LINE`, `HOLD STEADY`, and the ready state `READY FOR CAPTURE`.
+- Kept the camera-first page structure unchanged: top bar/timer/close, top-right prompt pill, preview, bottom controls, record button, and existing capture/upload/offline pipeline remain intact.
+- Cleaned camera-unavailable presentation so the fallback guide stays visible and all-caps unavailable text is not repeated across the screen.
+- Validated with focused Shot Tracer widget tests, `flutter analyze`, full `flutter test` (`79 passed`), `git diff --check`, and live `dashboard_nav_smoke_test.dart` on the iPhone 17 Pro Max simulator.
+
 ## 2026-06-14 Shot Tracer Camera-Only Capture Correction
 
 - Replaced the Shot Tracer `cameraFirst` upload presentation with a fixed camera-only capture surface: full-height preview, minimal top HUD, and iPhone-camera-style bottom record/use-video controls.

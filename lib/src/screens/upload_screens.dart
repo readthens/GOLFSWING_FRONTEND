@@ -283,6 +283,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     final recordEnabled =
         _isRecording || (!_isInitializingCamera && cameraReady && !fileReady);
     final recordLabel = _tracerRecordLabel(cameraReady, tracerReadiness);
+    final capturePrompt = _tracerCapturePrompt(cameraReady, tracerReadiness);
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -296,7 +297,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
                 videoController: _videoController,
                 file: _file,
                 isRecording: _isRecording,
-                status: _tracerLiveStatus(cameraReady, tracerReadiness),
+                status: capturePrompt,
                 timer: _tracerRecordingTimerLabel,
                 cameraNotice: _cameraNotice ?? _mediaNotice ?? _error,
                 tracerBallAnchor: _tracerBallAnchor,
@@ -315,7 +316,7 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
               recordEnabled: recordEnabled,
               uploadEnabled: fileReady && !hasHardFailure && !_isUploading,
               recordLabel: recordLabel,
-              status: _tracerLiveStatus(cameraReady, tracerReadiness),
+              status: _tracerControlHint(capturePrompt),
               onRecord: _recordOrStop,
               onRetake: _retakeTracerCapture,
               onUseVideo: () => _upload(auth.accessToken),
@@ -391,21 +392,54 @@ class _UploadScreenState extends ConsumerState<UploadScreen> {
     if (_file != null) return 'VIDEO READY';
     if (_isRecording) return 'STOP RECORDING';
     if (_isInitializingCamera) return 'OPENING CAMERA';
-    if (!cameraReady) return 'CAMERA UNAVAILABLE';
+    if (!cameraReady) {
+      return _isTracerCameraEntry ? 'IMPORT FROM INTRO' : 'CAMERA UNAVAILABLE';
+    }
     if (_isTracerCameraEntry) return 'TAP TO RECORD';
     if (!readiness.canRecord) return 'HOLD FRAME STEADY';
     return 'START RECORDING';
   }
 
-  String _tracerLiveStatus(bool cameraReady, TracerReadinessResult readiness) {
+  String _tracerCapturePrompt(
+    bool cameraReady,
+    TracerReadinessResult readiness,
+  ) {
     if (_file != null) return 'VIDEO READY';
     if (_isRecording && _tracerImpactWindowActive) return 'IMPACT WINDOW';
     if (_isRecording) return 'WAITING FOR IMPACT';
     if (_isInitializingCamera) return 'OPENING CAMERA';
     if (!cameraReady) return 'CAMERA UNAVAILABLE';
-    if (_isTracerCameraEntry) return 'SHOT TRACER';
+    final checks = readiness.checks;
+    if (!_pointInGuideBounds(_tracerBallAnchor)) return 'CENTER GOLFER';
+    if (_tracerBallAnchor.dy > 0.86) return 'MOVE FARTHER';
+    if (_tracerBallAnchor.dy < 0.58) return 'MOVE CLOSER';
+    if (checks['white_ball_confirmed'] != true) return 'BALL NOT DETECTED';
+    if (checks['target_line_set'] != true ||
+        checks['target_line_forward'] != true) {
+      return 'ALIGN TARGET LINE';
+    }
+    if (checks['phone_level'] != true && _phoneLevelDegrees != null) {
+      return 'RAISE PHONE SLIGHTLY';
+    }
+    if (checks['phone_stable'] != true &&
+        !_sensorUnavailable &&
+        _stabilitySamples > 0) {
+      return 'HOLD STEADY';
+    }
+    if (_isTracerCameraEntry) return 'READY FOR CAPTURE';
     if (readiness.canRecord) return 'RANGE READY';
     return 'LOCK BALL AND TARGET';
+  }
+
+  String _tracerControlHint(String prompt) {
+    return switch (prompt) {
+      'CAMERA UNAVAILABLE' => 'RETURN TO SHOT TRACER TO IMPORT',
+      'READY FOR CAPTURE' => 'PRESS RECORD WHEN FRAMED',
+      'VIDEO READY' => 'USE VIDEO TO CONTINUE',
+      'WAITING FOR IMPACT' || 'IMPACT WINDOW' => 'KEEP PHONE STEADY',
+      'OPENING CAMERA' => 'PREPARING CAMERA',
+      _ => 'ADJUST FRAME',
+    };
   }
 
   String get _tracerRecordingTimerLabel {
@@ -1365,6 +1399,7 @@ class _TracerCameraOnlyPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final cameraReady = cameraController?.value.isInitialized ?? false;
     final videoReady = videoController?.value.isInitialized ?? false;
+    final fallbackOnly = !cameraReady && !videoReady;
     return ClipRect(
       key: const ValueKey('tracer-camera-only-preview'),
       child: DecoratedBox(
@@ -1377,7 +1412,9 @@ class _TracerCameraOnlyPreview extends StatelessWidget {
             else if (videoReady)
               _FullBleedVideoPreview(controller: videoController!)
             else
-              _CameraOnlyPlaceholder(status: status),
+              _CameraOnlyPlaceholder(
+                cameraUnavailable: status == 'CAMERA UNAVAILABLE',
+              ),
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -1408,6 +1445,7 @@ class _TracerCameraOnlyPreview extends StatelessWidget {
                   tracerStyle: tracerStyle,
                   tracerPointMode: tracerPointMode,
                   handedness: handedness,
+                  dimmed: fallbackOnly,
                 ),
               ),
             ),
@@ -1419,10 +1457,11 @@ class _TracerCameraOnlyPreview extends StatelessWidget {
                 status: status,
                 timer: timer,
                 recording: isRecording,
+                ready: status == 'READY FOR CAPTURE',
                 onBack: onBack,
               ),
             ),
-            if (cameraNotice != null)
+            if (cameraNotice != null && !fallbackOnly)
               Positioned(
                 left: 18,
                 right: 18,
@@ -1477,9 +1516,9 @@ class _FullBleedVideoPreview extends StatelessWidget {
 }
 
 class _CameraOnlyPlaceholder extends StatelessWidget {
-  const _CameraOnlyPlaceholder({required this.status});
+  const _CameraOnlyPlaceholder({required this.cameraUnavailable});
 
-  final String status;
+  final bool cameraUnavailable;
 
   @override
   Widget build(BuildContext context) {
@@ -1494,12 +1533,24 @@ class _CameraOnlyPlaceholder extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            status,
+            cameraUnavailable ? 'Camera unavailable' : 'Opening camera',
             style: AppTextStyles.label.copyWith(
               color: AppColors.textPrimary,
               letterSpacing: 1.2,
             ),
           ),
+          if (cameraUnavailable) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Import a video to continue tracing.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.body.copyWith(
+                color: AppColors.textMuted,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1511,12 +1562,14 @@ class _TracerCameraHud extends StatelessWidget {
     required this.status,
     required this.timer,
     required this.recording,
+    required this.ready,
     required this.onBack,
   });
 
   final String status;
   final String timer;
   final bool recording;
+  final bool ready;
   final VoidCallback onBack;
 
   @override
@@ -1546,26 +1599,41 @@ class _TracerCameraHud extends StatelessWidget {
             ),
           ),
         ),
-        _TracerCameraHudPill(label: status, active: recording),
+        _TracerCameraHudPill(label: status, active: recording, ready: ready),
       ],
     );
   }
 }
 
 class _TracerCameraHudPill extends StatelessWidget {
-  const _TracerCameraHudPill({required this.label, required this.active});
+  const _TracerCameraHudPill({
+    required this.label,
+    required this.active,
+    required this.ready,
+  });
 
   final String label;
   final bool active;
+  final bool ready;
 
   @override
   Widget build(BuildContext context) {
+    final textColor = active
+        ? AppColors.signalRed
+        : ready
+        ? AppColors.signalGreen
+        : AppColors.textPrimary;
     return DecoratedBox(
+      key: const ValueKey('tracer-capture-prompt-chip'),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: active ? const Color(0x88FF5B5B) : const Color(0x24FFFFFF),
+          color: active
+              ? const Color(0x88FF5B5B)
+              : ready
+              ? const Color(0x887CFF9B)
+              : const Color(0x24FFFFFF),
         ),
       ),
       child: Padding(
@@ -1573,7 +1641,7 @@ class _TracerCameraHudPill extends StatelessWidget {
         child: Text(
           active ? 'REC' : label,
           style: AppTextStyles.micro.copyWith(
-            color: active ? AppColors.signalRed : AppColors.textPrimary,
+            color: textColor,
             fontSize: 10,
             letterSpacing: 0.9,
           ),
@@ -1848,6 +1916,7 @@ class _CapturePreview extends StatelessWidget {
                     tracerStyle: tracerStyle,
                     tracerPointMode: tracerPointMode,
                     handedness: handedness,
+                    dimmed: false,
                   ),
                 ),
               ),
@@ -1921,6 +1990,7 @@ class _CaptureGuidePainter extends CustomPainter {
     required this.tracerStyle,
     required this.tracerPointMode,
     required this.handedness,
+    required this.dimmed,
   });
 
   final String angle;
@@ -1931,6 +2001,7 @@ class _CaptureGuidePainter extends CustomPainter {
   final String tracerStyle;
   final String tracerPointMode;
   final String handedness;
+  final bool dimmed;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1994,30 +2065,11 @@ class _CaptureGuidePainter extends CustomPainter {
   }
 
   void _paintTracerGuide(Canvas canvas, Size size) {
-    final silhouetteAlpha = isRecording ? 0.12 : 0.34;
-    final guideAlpha = isRecording ? 0.46 : 0.78;
+    final opacity = dimmed ? 0.46 : 1.0;
     final accent = _tracerGuideAccent(tracerStyle);
-    final linePaint = Paint()
-      ..color = accent.withValues(alpha: guideAlpha)
-      ..strokeWidth = tracerStyle == 'thin_line' ? 1.4 : 2.6
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final markerPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.42)
-      ..style = PaintingStyle.fill;
-    final markerStroke = Paint()
-      ..color = accent.withValues(alpha: 0.9)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke;
-    final silhouettePaint = Paint()
-      ..color = Colors.white.withValues(alpha: silhouetteAlpha)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
 
     if (!isRecording) {
-      _drawGolferSilhouette(
+      _drawGolferGhostGuide(
         canvas,
         size,
         Rect.fromLTWH(
@@ -2026,8 +2078,8 @@ class _CaptureGuidePainter extends CustomPainter {
           size.width * 0.32,
           size.height * 0.54,
         ),
-        silhouettePaint,
         flip: handedness == 'left',
+        opacity: opacity,
       );
     }
 
@@ -2039,25 +2091,33 @@ class _CaptureGuidePainter extends CustomPainter {
       tracerTargetPoint.dx * size.width,
       tracerTargetPoint.dy * size.height,
     );
-    canvas.drawLine(ball, target, linePaint);
-    _drawArrowHead(canvas, ball, target, linePaint);
-    canvas.drawCircle(ball, 16, markerPaint);
-    canvas.drawCircle(ball, 16, markerStroke);
-    canvas.drawCircle(target, 10, markerPaint);
-    canvas.drawCircle(target, 10, markerStroke);
+    final lineHaloPaint = Paint()
+      ..color = accent.withValues(alpha: 0.08 * opacity)
+      ..strokeWidth = 7
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    final linePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.5 * opacity)
+      ..strokeWidth = 1.35
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(ball, target, lineHaloPaint);
+    _drawDashedLine(canvas, ball, target, linePaint, dash: 10, gap: 8);
+    _drawBallAnchor(canvas, ball, accent, opacity);
+    _drawTargetMarker(canvas, target, accent, opacity);
 
     final selected = tracerPointMode == 'target' ? target : ball;
     canvas.drawCircle(
       selected,
       tracerPointMode == 'target' ? 15 : 21,
       Paint()
-        ..color = accent.withValues(alpha: 0.16)
+        ..color = accent.withValues(alpha: 0.1 * opacity)
         ..style = PaintingStyle.fill,
     );
 
     final cornerPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.58)
-      ..strokeWidth = 1.2
+      ..color = Colors.white.withValues(alpha: 0.32 * opacity)
+      ..strokeWidth = 1.1
       ..style = PaintingStyle.stroke;
     const inset = 10.0;
     const length = 26.0;
@@ -2083,42 +2143,211 @@ class _CaptureGuidePainter extends CustomPainter {
     );
   }
 
-  void _drawGolferSilhouette(
+  void _drawGolferGhostGuide(
     Canvas canvas,
     Size size,
-    Rect rect,
-    Paint paint, {
+    Rect rect, {
     required bool flip,
+    required double opacity,
   }) {
     double x(double value) => flip
         ? rect.right - (rect.width * value)
         : rect.left + (rect.width * value);
     double y(double value) => rect.top + (rect.height * value);
-    final head = Offset(x(0.5), y(0.08));
-    canvas.drawCircle(head, rect.width * 0.11, paint);
-    final body = Path()
-      ..moveTo(x(0.46), y(0.19))
-      ..quadraticBezierTo(x(0.35), y(0.34), x(0.38), y(0.48))
-      ..lineTo(x(0.47), y(0.56))
-      ..lineTo(x(0.62), y(0.50))
-      ..quadraticBezierTo(x(0.57), y(0.32), x(0.54), y(0.20));
-    canvas.drawPath(body, paint);
-    canvas.drawLine(Offset(x(0.43), y(0.54)), Offset(x(0.33), y(0.92)), paint);
-    canvas.drawLine(Offset(x(0.59), y(0.53)), Offset(x(0.74), y(0.92)), paint);
-    canvas.drawLine(Offset(x(0.47), y(0.36)), Offset(x(0.73), y(0.68)), paint);
-    canvas.drawLine(Offset(x(0.56), y(0.36)), Offset(x(0.73), y(0.68)), paint);
-    canvas.drawLine(Offset(x(0.73), y(0.68)), Offset(x(1.02), y(0.88)), paint);
+    final fillPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.055 * opacity)
+      ..style = PaintingStyle.fill;
+    final outlinePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.22 * opacity)
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final softPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.09 * opacity)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final headRect = Rect.fromCenter(
+      center: Offset(x(0.5), y(0.09)),
+      width: rect.width * 0.17,
+      height: rect.height * 0.1,
+    );
+    canvas.drawOval(headRect, fillPaint);
+    canvas.drawOval(headRect, outlinePaint);
+
+    final ghost = Path()
+      ..moveTo(x(0.42), y(0.18))
+      ..cubicTo(x(0.32), y(0.24), x(0.27), y(0.39), x(0.34), y(0.51))
+      ..cubicTo(x(0.39), y(0.59), x(0.42), y(0.66), x(0.36), y(0.82))
+      ..quadraticBezierTo(x(0.34), y(0.9), x(0.27), y(0.95))
+      ..lineTo(x(0.43), y(0.95))
+      ..quadraticBezierTo(x(0.49), y(0.79), x(0.5), y(0.62))
+      ..quadraticBezierTo(x(0.57), y(0.79), x(0.68), y(0.95))
+      ..lineTo(x(0.84), y(0.95))
+      ..quadraticBezierTo(x(0.73), y(0.82), x(0.66), y(0.54))
+      ..cubicTo(x(0.75), y(0.39), x(0.66), y(0.24), x(0.57), y(0.18))
+      ..quadraticBezierTo(x(0.5), y(0.15), x(0.42), y(0.18))
+      ..close();
+    canvas.drawPath(ghost, fillPaint);
+    canvas.drawPath(ghost, outlinePaint);
+
+    final shoulderLine = Path()
+      ..moveTo(x(0.32), y(0.3))
+      ..quadraticBezierTo(x(0.52), y(0.35), x(0.78), y(0.54));
+    canvas.drawPath(shoulderLine, softPaint);
+
+    final clubPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.15 * opacity)
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(x(0.7), y(0.54)),
+      Offset(x(1.03), y(0.84)),
+      clubPaint,
+    );
+
+    final stancePaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.08 * opacity)
+      ..style = PaintingStyle.fill;
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(x(0.54), y(0.98)),
+        width: rect.width * 0.74,
+        height: rect.height * 0.05,
+      ),
+      stancePaint,
+    );
   }
 
-  void _drawArrowHead(Canvas canvas, Offset start, Offset end, Paint paint) {
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset start,
+    Offset end,
+    Paint paint, {
+    required double dash,
+    required double gap,
+  }) {
     final direction = end - start;
-    if (direction.distance < 4) return;
+    final distance = direction.distance;
+    if (distance < 4) return;
     final unit = direction / direction.distance;
-    final normal = Offset(-unit.dy, unit.dx);
-    final p1 = end - unit * 18 + normal * 8;
-    final p2 = end - unit * 18 - normal * 8;
-    canvas.drawLine(end, p1, paint);
-    canvas.drawLine(end, p2, paint);
+    var drawn = 0.0;
+    while (drawn < distance) {
+      final segmentStart = start + unit * drawn;
+      final segmentEnd = start + unit * math.min(drawn + dash, distance);
+      canvas.drawLine(segmentStart, segmentEnd, paint);
+      drawn += dash + gap;
+    }
+  }
+
+  void _drawBallAnchor(
+    Canvas canvas,
+    Offset center,
+    Color accent,
+    double opacity,
+  ) {
+    canvas.drawCircle(
+      center,
+      28,
+      Paint()
+        ..color = accent.withValues(alpha: 0.07 * opacity)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      center,
+      15,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.34)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      center,
+      15,
+      Paint()
+        ..color = accent.withValues(alpha: 0.82 * opacity)
+        ..strokeWidth = 1.8
+        ..style = PaintingStyle.stroke,
+    );
+    canvas.drawCircle(
+      center,
+      3.2,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.9 * opacity)
+        ..style = PaintingStyle.fill,
+    );
+    _drawGuideLabel(canvas, 'BALL', center + const Offset(0, 25), opacity);
+  }
+
+  void _drawTargetMarker(
+    Canvas canvas,
+    Offset center,
+    Color accent,
+    double opacity,
+  ) {
+    canvas.drawCircle(
+      center,
+      18,
+      Paint()
+        ..color = accent.withValues(alpha: 0.08 * opacity)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      center,
+      10,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.3)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      center,
+      10,
+      Paint()
+        ..color = accent.withValues(alpha: 0.76 * opacity)
+        ..strokeWidth = 1.5
+        ..style = PaintingStyle.stroke,
+    );
+    final tickPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.46 * opacity)
+      ..strokeWidth = 1
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      center + const Offset(-3, 0),
+      center + const Offset(3, 0),
+      tickPaint,
+    );
+    canvas.drawLine(
+      center + const Offset(0, -3),
+      center + const Offset(0, 3),
+      tickPaint,
+    );
+    _drawGuideLabel(canvas, 'TARGET', center - const Offset(0, 28), opacity);
+  }
+
+  void _drawGuideLabel(
+    Canvas canvas,
+    String label,
+    Offset anchor,
+    double opacity,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.58 * opacity),
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.0,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(anchor.dx - painter.width / 2, anchor.dy - painter.height / 2),
+    );
   }
 
   @override
@@ -2130,7 +2359,8 @@ class _CaptureGuidePainter extends CustomPainter {
         oldDelegate.tracerTargetPoint != tracerTargetPoint ||
         oldDelegate.tracerStyle != tracerStyle ||
         oldDelegate.tracerPointMode != tracerPointMode ||
-        oldDelegate.handedness != handedness;
+        oldDelegate.handedness != handedness ||
+        oldDelegate.dimmed != dimmed;
   }
 }
 
